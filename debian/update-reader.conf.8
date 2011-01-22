@@ -1,0 +1,56 @@
+.TH UPDATE-READER.CONF 8 "Debian GNU/Linux tools" "DEBIAN"
+.SH NAME
+update\-reader.conf \- (re)generate /etc/reader.conf
+.SH SYNOPSIS
+.B update\-reader.conf
+[force]
+.SH DESCRIPTION
+.B update\-reader.conf
+is a simple tool to manage
+.IR /etc/reader.conf .
+The PCSC daemon (pcscd) uses one configuration file for its
+configuration. This makes it hard for packages to dynamically add
+information about their own smart card reader drivers. To fix this
+.B
+update\-reader.conf
+has been introduced.
+.PP
+.B update-reader.conf
+attempts to fix this by generating the configuration file from separate
+files which are located in
+.IR /etc/reader.conf.d .
+All files in that directory are assembled together to form
+.IR /etc/reader.conf .
+.PP
+After generation a backup of the old file is put in
+.IR /etc/reader.conf.old .
+.SH "FILES"
+.B update\-reader.conf
+will ignore files that match the following regular expression:
+.RS
+.B *\e(\e.dpkg\-[a\-z]*\e|~\e)$
+.RE
+(ie files with the extension
+.IR .dpkg\-new ,
+.IR .dpkg\-orig ,
+.IR .dpkg\-dist ,
+.IR .dpkg\-old ,
+or whose filename end with a
+.IR ~ ).
+.SH OPTIONS
+.TP
+.I force
+.B update\-reader.conf
+check if the current
+.I /etc/reader.conf
+is a generated file by checking for a special tag on the first line. If this
+tag is not found generation is aborted. By supplying
+.I force
+as parameter only a warning is printed.
+.SH "SEE ALSO"
+.BR pcscd (1)
+.SH BUGS
+None of course! :)
+.SH AUTHOR
+This manual page was written by Ludovic Rousseau
+<ludovic.rousseau@free.fr> for the Debian GNU/Linux system.

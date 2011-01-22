@@ -1,0 +1,21 @@
+pcscd for Debian
+----------------
+
+pscsd starts before usbmgr
+==========================
+
+Up to version 1.0.2.beta5-1 pcscd init.d script was started *before*
+usbmgr (pcscd was level 20 (default) and usbmgr was level 45). So USB
+readers managed by usbmgr could not be used.
+
+Now pcscd is started after usbmgr (pcscd uses level 50) but if you
+upgraded from a earlier version you may still have the old
+configuration.
+
+You have to completely remove pcscd using 'dpkg --purge pcscd' or
+'apt-get remove --purge pcscd' and reinstall it (and the other packages
+depending in pcscd) after.
+
+See Debian bug #146151.
+
+ -- Ludovic Rousseau <rousseau@debian.org>, Sun Jun 30 14:16:50 CEST 2002

@@ -1,0 +1,2 @@
+pcscd: package-contains-empty-directory usr/lib/pcsc/drivers/
+pcscd: package-contains-empty-directory usr/lib/pcsc/services/

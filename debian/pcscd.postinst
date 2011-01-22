@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -e
+
+# regenerate /etc/reader.conf
+if [ -x /usr/sbin/update-reader.conf ]; then
+  update-reader.conf || true;
+fi
+
+#DEBHELPER#

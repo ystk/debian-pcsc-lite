@@ -1,0 +1,3 @@
+etc/reader.conf.d/0comments
+usr/sbin/pcscd
+usr/sbin/update-reader.conf

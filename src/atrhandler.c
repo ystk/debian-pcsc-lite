@@ -239,6 +239,9 @@ short ATRDecodeAtr(PSMARTCARD_EXTENSION psExtension,
 	if (psExtension->CardCapabilities.AvailableProtocols & SCARD_PROTOCOL_T1)
 		TCK = pucAtr[p++];
 
+	if (p > MAX_ATR_SIZE)
+		return 0;       /** @retval 0 Maximum attribute size */
+
 	memcpy(psExtension->ATR.Value, pucAtr, p);
 	psExtension->ATR.Length = p;	/* modified from p-1 */
 

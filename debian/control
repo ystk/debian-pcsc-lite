@@ -1,0 +1,50 @@
+Source: pcsc-lite
+Section: misc
+Priority: extra
+Maintainer: Ludovic Rousseau <rousseau@debian.org>
+Build-Depends: debhelper (>= 7), flex, autotools-dev, libhal-dev
+Standards-Version: 3.8.4
+Vcs-Svn: svn://svn.debian.org/svn/collab-maint/deb-maint/pcsc-lite/trunk
+Vcs-Browser: http://svn.debian.org/viewsvn/collab-maint/deb-maint/pcsc-lite/trunk/
+Homepage: http://pcsclite.alioth.debian.org/
+
+Package: pcscd
+Architecture: any
+Depends: libccid | pcsc-ifd-handler, ${shlibs:Depends}, ${misc:Depends}, lsb-base (>= 3.0-6), hal
+Conflicts: libccid (<= 1.0.0-1)
+Description: Middleware to access a smart card using PC/SC (daemon side)
+ The purpose of PC/SC Lite is to provide a Windows(R) SCard interface
+ in a very small form factor for communicating to smart cards and
+ smart cards readers.
+ .
+ The PC/SC daemon is used to dynamically allocate/deallocate reader
+ drivers at runtime and manage connections to the readers.
+
+Package: libpcsclite-dev
+Section: libdevel
+Priority: optional
+Architecture: any
+Depends: libpcsclite1 (= ${binary:Version}), ${misc:Depends}
+Description: Middleware to access a smart card using PC/SC (development files)
+ The purpose of PC/SC Lite is to provide a Windows(R) SCard interface
+ in a very small form factor for communicating to smart cards and
+ smart cards readers.
+ .
+ This package contains the files needed for compiling and linking
+ an application that communicates to any reader available to the
+ PC/SC daemon.
+
+Package: libpcsclite1
+Section: libs
+Priority: optional
+Architecture: any
+Conflicts: libpcsclite-dev (<< ${binary:Version}), pcscd (<< ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Suggests: pcscd
+Description: Middleware to access a smart card using PC/SC (library)
+ The purpose of PC/SC Lite is to provide a Windows(R) SCard interface
+ in a very small form factor for communicating to smartcards and
+ readers.
+ .
+ The PC/SC Lite library is used to connect to the PC/SC daemon from
+ a client application and provide access to the desired reader.

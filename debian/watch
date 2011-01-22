@@ -1,0 +1,6 @@
+# use uscan(1)
+version=3
+
+# Full-site-with-pattern  [Version  [Action]]
+http://alioth.debian.org/frs/?group_id=30105 \
+  https://alioth.debian.org/frs/download.php/.*/pcsc-lite-(.*)\.tar\.bz2

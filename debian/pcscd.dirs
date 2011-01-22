@@ -1,0 +1,4 @@
+usr/lib/pcsc/drivers
+usr/lib/pcsc/services
+usr/sbin
+usr/share/lintian/overrides
