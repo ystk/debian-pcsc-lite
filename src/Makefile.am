@@ -1,45 +1,44 @@
-# Process this file with automake to create Makefile.in.
+SUBDIRS = spy
 
 AM_CPPFLAGS = -I$(top_srcdir)/src/PCSC -I$(top_builddir)/src/PCSC \
 	$(SYMBOL_VISIBILITY)
 
 lib_LTLIBRARIES = libpcsclite.la
 
-if !HAVE_SCF
 sbin_PROGRAMS = pcscd
-endif
 noinst_PROGRAMS = testpcsc pcsc-wirecheck pcsc-wirecheck-gen
 
-if HAVE_SCF
-PCSC_CLIENT_SRC  = winscard_scf.c
-else
-PCSC_CLIENT_SRC  = winscard_clnt.c
+if ENABLE_SERIAL
+SERIAL_CONFIG = configfile.l
+endif
+
+if ENABLE_USB
+USB_CONFIG = tokenparser.l \
+	hotplug_libudev.c \
+	hotplug_libusb.c \
+	hotplug_linux.c \
+	hotplug_macosx.c
 endif
 
 libpcsclite_la_SOURCES = \
 	debug.c \
-	debug.h \
-	dyn_hpux.c \
-	dyn_macosx.c \
-	dyn_unix.c \
 	error.c \
-	$(PCSC_CLIENT_SRC) \
+	winscard_clnt.c \
+	simclist.c \
 	strlcat.c \
 	strlcpy.c \
 	sys_unix.c \
-	thread_unix.c \
 	utils.c \
 	winscard_msg.c
 libpcsclite_la_LDFLAGS = -version-info 1:0:0
-libpcsclite_la_CFLAGS = $(CFLAGS) $(PTHREAD_CFLAGS) -DLIBPCSCLITE
-libpcsclite_la_LIBADD = $(COREFOUNDATION) $(LIBSMARTCARD) $(LIBDL) \
-	$(PTHREAD_CFLAGS) $(PTHREAD_LIBS)
+libpcsclite_la_CFLAGS = $(CFLAGS) $(PTHREAD_CFLAGS) -DLIBPCSCLITE -DSIMCLIST_NO_DUMPRESTORE
+libpcsclite_la_LIBADD = $(PTHREAD_CFLAGS) $(PTHREAD_LIBS)
 
 pcscd_SOURCES = \
 	atrhandler.c \
 	atrhandler.h \
 	configfile.h \
-	configfile.l \
+	$(SERIAL_CONFIG) \
 	debuglog.c \
 	dyn_generic.h \
 	dyn_hpux.c \
@@ -49,10 +48,6 @@ pcscd_SOURCES = \
 	eventhandler.h \
 	hotplug_generic.c \
 	hotplug.h \
-	hotplug_libhal.c \
-	hotplug_libusb.c \
-	hotplug_linux.c \
-	hotplug_macosx.c \
 	ifdwrapper.c \
 	ifdwrapper.h \
 	misc.h \
@@ -72,14 +67,16 @@ pcscd_SOURCES = \
 	prothandler.h \
 	readerfactory.c \
 	readerfactory.h \
+	sd-daemon.c \
+	sd-daemon.h \
+	simclist.c \
+	simclist.h \
 	strlcat.c \
 	strlcpy.c \
 	strlcpycat.h \
 	sys_generic.h \
 	sys_unix.c \
-	thread_generic.h \
-	thread_unix.c \
-	tokenparser.l \
+	$(USB_CONFIG) \
 	utils.c \
 	utils.h \
 	winscard.c \
@@ -88,13 +85,21 @@ pcscd_SOURCES = \
 	winscard_msg_srv.c \
 	winscard_svc.c \
 	winscard_svc.h
-pcscd_CFLAGS = $(CFLAGS) $(PTHREAD_CFLAGS) $(LIBUSB_CFLAGS) $(LIBHAL_CFLAGS) \
-	-DPCSCD
+pcscd_CFLAGS = $(CFLAGS) $(PTHREAD_CFLAGS) $(LIBUSB_CFLAGS) $(LIBUDEV_CFLAGS) \
+	-DPCSCD -DSIMCLIST_NO_DUMPRESTORE
 pcscd_LDFLAGS = $(LDFLAGS) -export-dynamic
 pcscd_LDADD = \
 	$(PTHREAD_LIBS) $(COREFOUNDATION) \
-	$(LIBUSB_LIBS) $(LIBDL) $(IOKIT) $(LIBHAL_LIBS) \
+	$(LIBUSB_LIBS) $(LIBDL) $(IOKIT) $(LIBUDEV_LIBS) \
 	$(PTHREAD_LIBS) $(PTHREAD_CFLAGS)
+
+fix-rights: install-sbinPROGRAMS
+	chgrp pcscd $(DESTDIR)$(sbindir)/pcscd
+	chmod g+s $(DESTDIR)$(sbindir)/pcscd
+
+update-systemd:
+	curl -O http://cgit.freedesktop.org/systemd/plain/src/sd-daemon.c
+	curl -O http://cgit.freedesktop.org/systemd/plain/src/sd-daemon.h
 
 testpcsc_SOURCES = testpcsc.c
 testpcsc_LDADD = libpcsclite.la
@@ -134,11 +139,12 @@ regen: pcsc-wirecheck-gen
 nobase_include_HEADERS = \
 	PCSC/debuglog.h \
 	PCSC/ifdhandler.h \
+	PCSC/reader.h \
 	PCSC/winscard.h \
 	PCSC/wintypes.h
 
 nodistheaderdir = $(includedir)/PCSC
-nodistheader_DATA = PCSC/reader.h PCSC/pcsclite.h
+nodistheader_DATA = PCSC/pcsclite.h
 
 pcdir= $(libdir)/pkgconfig
 pc_DATA = libpcsclite.pc
@@ -149,5 +155,4 @@ pc_DATA = libpcsclite.pc
 tokenparser.c: tokenparser.l
 	$(SHELL) $(YLWRAP) $< lex.tp.c $@ -- "$(LEX)" -Ptp $(AM_LFLAGS) $(LFLAGS)
 
-EXTRA_DIST = README_INTERNALS.txt winscard_scf.c
-
+EXTRA_DIST = README_INTERNALS.txt

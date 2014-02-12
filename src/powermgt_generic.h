@@ -4,7 +4,7 @@
  * Copyright (C) 2002
  *  David Corcoran <corcoran@linuxnet.com>
  *
- * $Id: powermgt_generic.h 2896 2008-04-22 09:20:00Z rousseau $
+ * $Id: powermgt_generic.h 5434 2010-12-08 14:13:21Z rousseau $
  */
 
 /**
@@ -15,20 +15,9 @@
 #ifndef __powermgt_generic_h__
 #define __powermgt_generic_h__
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
-
 /**
  * Registers for Power Management callbacks
  */
 ULONG PMRegisterForPowerEvents(void);
-
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

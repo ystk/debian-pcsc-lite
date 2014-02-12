@@ -3,14 +3,15 @@
  *
  * Copyright (C) 1999-2003
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2002-2009
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: winscard.h 3260 2009-01-02 15:19:59Z rousseau $
+ * $Id: winscard.h 5962 2011-09-24 08:24:34Z rousseau $
  */
 
 /**
  * @file
- * @brief This handles smartcard reader communications.
+ * @brief This handles smart card reader communications.
  */
 
 #ifndef __winscard_h__
@@ -35,8 +36,6 @@ extern "C"
 
 	PCSC_API LONG SCardIsValidContext(SCARDCONTEXT hContext);
 
-	PCSC_API LONG SCardSetTimeout(SCARDCONTEXT hContext, DWORD dwTimeout);
-
 	PCSC_API LONG SCardConnect(SCARDCONTEXT hContext,
 		LPCSTR szReader,
 		DWORD dwShareMode,
@@ -54,8 +53,6 @@ extern "C"
 
 	PCSC_API LONG SCardEndTransaction(SCARDHANDLE hCard, DWORD dwDisposition);
 
-	PCSC_API LONG SCardCancelTransaction(SCARDHANDLE hCard);
-
 	PCSC_API LONG SCardStatus(SCARDHANDLE hCard,
 		/*@null@*/ /*@out@*/ LPSTR mszReaderName,
 		/*@null@*/ /*@out@*/ LPDWORD pcchReaderLen,
@@ -66,7 +63,7 @@ extern "C"
 
 	PCSC_API LONG SCardGetStatusChange(SCARDCONTEXT hContext,
 		DWORD dwTimeout,
-		LPSCARD_READERSTATE_A rgReaderStates, DWORD cReaders);
+		LPSCARD_READERSTATE rgReaderStates, DWORD cReaders);
 
 	PCSC_API LONG SCardControl(SCARDHANDLE hCard, DWORD dwControlCode,
 		LPCVOID pbSendBuffer, DWORD cbSendLength,
@@ -74,9 +71,9 @@ extern "C"
 		LPDWORD lpBytesReturned);
 
 	PCSC_API LONG SCardTransmit(SCARDHANDLE hCard,
-		LPCSCARD_IO_REQUEST pioSendPci,
+		const SCARD_IO_REQUEST *pioSendPci,
 		LPCBYTE pbSendBuffer, DWORD cbSendLength,
-		/*@out@*/ LPSCARD_IO_REQUEST pioRecvPci,
+		/*@out@*/ SCARD_IO_REQUEST *pioRecvPci,
 		/*@out@*/ LPBYTE pbRecvBuffer, LPDWORD pcbRecvLength);
 
 	PCSC_API LONG SCardListReaderGroups(SCARDCONTEXT hContext,

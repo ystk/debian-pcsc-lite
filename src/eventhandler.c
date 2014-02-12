@@ -1,12 +1,12 @@
 /*
  * MUSCLE SmartCard Development ( http://www.linuxnet.com )
  *
- * Copyright (C) 2000
+ * Copyright (C) 2000-2002
  *  David Corcoran <corcoran@linuxnet.com>
- * Copyright (C) 2004-2008
+ * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: eventhandler.c 3305 2009-02-06 08:54:05Z rousseau $
+ * $Id: eventhandler.c 5859 2011-07-09 11:28:20Z rousseau $
  */
 
 /**
@@ -22,12 +22,11 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pthread.h>
 
 #include "misc.h"
 #include "pcscd.h"
-#include "ifdhandler.h"
 #include "debuglog.h"
-#include "thread_generic.h"
 #include "readerfactory.h"
 #include "eventhandler.h"
 #include "dyn_generic.h"
@@ -36,81 +35,104 @@
 #include "prothandler.h"
 #include "strlcpycat.h"
 #include "utils.h"
+#include "winscard_svc.h"
+#include "simclist.h"
 
-static PREADER_STATE readerStates[PCSCLITE_MAX_READERS_CONTEXTS];
+static list_t ClientsWaitingForEvent;	/**< list of client file descriptors */
+pthread_mutex_t ClientsWaitingForEvent_lock;	/**< lock for the above list */
 
-static void EHStatusHandlerThread(PREADER_CONTEXT);
+static void EHStatusHandlerThread(READER_CONTEXT *);
+
+LONG EHRegisterClientForEvent(int32_t filedes)
+{
+	(void)pthread_mutex_lock(&ClientsWaitingForEvent_lock);
+
+	(void)list_append(&ClientsWaitingForEvent, &filedes);
+
+	(void)pthread_mutex_unlock(&ClientsWaitingForEvent_lock);
+
+	return SCARD_S_SUCCESS;
+} /* EHRegisterClientForEvent */
+
+/**
+ * Try to unregisted a client
+ * If no client is found then do not log an error
+ */
+LONG EHTryToUnregisterClientForEvent(int32_t filedes)
+{
+	LONG rv = SCARD_S_SUCCESS;
+	int ret;
+
+	(void)pthread_mutex_lock(&ClientsWaitingForEvent_lock);
+
+	ret = list_delete(&ClientsWaitingForEvent, &filedes);
+
+	(void)pthread_mutex_unlock(&ClientsWaitingForEvent_lock);
+
+	if (ret < 0)
+		rv = SCARD_F_INTERNAL_ERROR;
+
+	return rv;
+} /* EHTryToUnregisterClientForEvent */
+
+/**
+ * Unregister a client and log an error if the client is not found
+ */
+LONG EHUnregisterClientForEvent(int32_t filedes)
+{
+	LONG rv = EHTryToUnregisterClientForEvent(filedes);
+
+	if (rv < 0)
+		Log2(PCSC_LOG_ERROR, "Can't remove client: %d", filedes);
+
+	return rv;
+} /* EHUnregisterClientForEvent */
+
+/**
+ * Sends an asynchronous event to any waiting client
+ */
+LONG EHSignalEventToClients(void)
+{
+	LONG rv = SCARD_S_SUCCESS;
+	int32_t filedes;
+
+	(void)pthread_mutex_lock(&ClientsWaitingForEvent_lock);
+
+	(void)list_iterator_start(&ClientsWaitingForEvent);
+	while (list_iterator_hasnext(&ClientsWaitingForEvent))
+	{
+        filedes = *(int32_t *)list_iterator_next(&ClientsWaitingForEvent);
+		rv = MSGSignalClient(filedes, SCARD_S_SUCCESS);
+	}
+	(void)list_iterator_stop(&ClientsWaitingForEvent);
+
+	(void)list_clear(&ClientsWaitingForEvent);
+
+	(void)pthread_mutex_unlock(&ClientsWaitingForEvent_lock);
+
+	return rv;
+} /* EHSignalEventToClients */
 
 LONG EHInitializeEventStructures(void)
 {
-	int fd, i, pageSize;
-	int mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+	(void)list_init(&ClientsWaitingForEvent);
 
-	fd = 0;
-	i = 0;
-	pageSize = 0;
+	/* request to store copies, and provide the metric function */
+    (void)list_attributes_copy(&ClientsWaitingForEvent, list_meter_int32_t, 1);
 
-	(void)SYS_RemoveFile(PCSCLITE_PUBSHM_FILE);
+	/* setting the comparator, so the list can sort, find the min, max etc */
+    (void)list_attributes_comparator(&ClientsWaitingForEvent, list_comparator_int32_t);
 
-	fd = SYS_OpenFile(PCSCLITE_PUBSHM_FILE, O_RDWR | O_CREAT, mode);
-	if (fd < 0)
-	{
-		Log3(PCSC_LOG_CRITICAL, "Cannot create public shared file %s: %s",
-			PCSCLITE_PUBSHM_FILE, strerror(errno));
-		exit(1);
-	}
-
-	/* set correct mode even is umask is too restictive */
-	(void)SYS_Chmod(PCSCLITE_PUBSHM_FILE, mode);
-
-	pageSize = SYS_GetPageSize();
-
-	/*
-	 * Jump to end of file space and allocate zero's
-	 */
-	(void)SYS_SeekFile(fd, pageSize * PCSCLITE_MAX_READERS_CONTEXTS);
-	(void)SYS_WriteFile(fd, "", 1);
-
-	/*
-	 * Allocate each reader structure
-	 */
-	for (i = 0; i < PCSCLITE_MAX_READERS_CONTEXTS; i++)
-	{
-		readerStates[i] = (PREADER_STATE)
-			SYS_MemoryMap(sizeof(READER_STATE), fd, (i * pageSize));
-		if (readerStates[i] == MAP_FAILED)
-		{
-			Log3(PCSC_LOG_CRITICAL, "Cannot memory map public shared file %s: %s",
-				PCSCLITE_PUBSHM_FILE, strerror(errno));
-			exit(1);
-		}
-
-		/*
-		 * Zero out each value in the struct
-		 */
-		memset((readerStates[i])->readerName, 0, MAX_READERNAME);
-		memset((readerStates[i])->cardAtr, 0, MAX_ATR_SIZE);
-		(readerStates[i])->readerID = 0;
-		(readerStates[i])->readerState = 0;
-		(readerStates[i])->readerSharing = 0;
-		(readerStates[i])->cardAtrLength = 0;
-		(readerStates[i])->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
-	}
+	(void)pthread_mutex_init(&ClientsWaitingForEvent_lock, NULL);
 
 	return SCARD_S_SUCCESS;
 }
 
-LONG EHDestroyEventHandler(PREADER_CONTEXT rContext)
+LONG EHDestroyEventHandler(READER_CONTEXT * rContext)
 {
 	int rv;
 	DWORD dwGetSize;
 	UCHAR ucGetData[1];
-
-	if (NULL == rContext->readerState)
-	{
-		Log1(PCSC_LOG_ERROR, "Thread never started (reader init failed?)");
-		return SCARD_S_SUCCESS;
-	}
 
 	if ('\0' == rContext->readerState->readerName[0])
 	{
@@ -121,7 +143,7 @@ LONG EHDestroyEventHandler(PREADER_CONTEXT rContext)
 	/*
 	 * Set the thread to 0 to exit thread
 	 */
-	rContext->dwLockId = 0xFFFF;
+	rContext->hLockId = 0xFFFF;
 
 	Log1(PCSC_LOG_INFO, "Stomping thread.");
 
@@ -130,32 +152,35 @@ LONG EHDestroyEventHandler(PREADER_CONTEXT rContext)
 	rv = IFDGetCapabilities(rContext, TAG_IFD_POLLING_THREAD_KILLABLE,
 		&dwGetSize, ucGetData);
 
+#ifdef HAVE_PTHREAD_CANCEL
 	if ((IFD_SUCCESS == rv) && (1 == dwGetSize) && ucGetData[0])
 	{
 		Log1(PCSC_LOG_INFO, "Killing polling thread");
-		(void)SYS_ThreadCancel(rContext->pthThread);
+		(void)pthread_cancel(rContext->pthThread);
 	}
 	else
-		Log1(PCSC_LOG_INFO, "Waiting polling thread");
+#endif
+	{
+		/* ask to stop the "polling" thread */
+		RESPONSECODE (*fct)(DWORD) = NULL;
+
+		dwGetSize = sizeof(fct);
+		rv = IFDGetCapabilities(rContext, TAG_IFD_STOP_POLLING_THREAD,
+			&dwGetSize, (PUCHAR)&fct);
+
+		if ((IFD_SUCCESS == rv) && (dwGetSize == sizeof(fct)))
+		{
+			Log1(PCSC_LOG_INFO, "Request stoping of polling thread");
+			fct(rContext->slot);
+		}
+		else
+			Log1(PCSC_LOG_INFO, "Waiting polling thread");
+	}
 
 	/* wait for the thread to finish */
-	rv = SYS_ThreadJoin(rContext->pthThread, NULL);
+	rv = pthread_join(rContext->pthThread, NULL);
 	if (rv)
-		Log2(PCSC_LOG_ERROR, "SYS_ThreadJoin failed: %s", strerror(rv));
-
-	/*
-	 * Zero out the public status struct to allow it to be recycled and
-	 * used again
-	 */
-	memset(rContext->readerState->readerName, 0,
-		sizeof(rContext->readerState->readerName));
-	memset(rContext->readerState->cardAtr, 0,
-		sizeof(rContext->readerState->cardAtr));
-	rContext->readerState->readerID = 0;
-	rContext->readerState->readerState = 0;
-	rContext->readerState->readerSharing = 0;
-	rContext->readerState->cardAtrLength = 0;
-	rContext->readerState->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
+		Log2(PCSC_LOG_ERROR, "pthread_join failed: %s", strerror(rv));
 
 	/* Zero the thread */
 	rContext->pthThread = 0;
@@ -165,74 +190,37 @@ LONG EHDestroyEventHandler(PREADER_CONTEXT rContext)
 	return SCARD_S_SUCCESS;
 }
 
-LONG EHSpawnEventHandler(PREADER_CONTEXT rContext,
-	RESPONSECODE (*card_event)(DWORD))
+LONG EHSpawnEventHandler(READER_CONTEXT * rContext)
 {
 	LONG rv;
 	DWORD dwStatus = 0;
-	int i;
-	UCHAR ucAtr[MAX_ATR_SIZE];
-	DWORD dwAtrLen = 0;
 
-	rv = IFDStatusICC(rContext, &dwStatus, ucAtr, &dwAtrLen);
+	rv = IFDStatusICC(rContext, &dwStatus);
 	if (rv != SCARD_S_SUCCESS)
 	{
-		Log2(PCSC_LOG_ERROR, "Initial Check Failed on %s", rContext->lpcReader);
+		Log2(PCSC_LOG_ERROR, "Initial Check Failed on %s",
+			rContext->readerState->readerName);
 		return SCARD_F_UNKNOWN_ERROR;
 	}
 
-	/*
-	 * Find an empty reader slot and insert the new reader
-	 */
-	for (i = 0; i < PCSCLITE_MAX_READERS_CONTEXTS; i++)
-	{
-		if ((readerStates[i])->readerID == 0)
-			break;
-	}
-
-	if (i == PCSCLITE_MAX_READERS_CONTEXTS)
-		return SCARD_F_INTERNAL_ERROR;
-
-	/*
-	 * Set all the attributes to this reader
-	 */
-	rContext->readerState = readerStates[i];
-	(void)strlcpy(rContext->readerState->readerName, rContext->lpcReader,
-		sizeof(rContext->readerState->readerName));
-	memcpy(rContext->readerState->cardAtr, ucAtr, dwAtrLen);
-	rContext->readerState->readerID = i + 100;
-	rContext->readerState->readerState = dwStatus;
-	rContext->readerState->readerSharing = rContext->dwContexts;
-	rContext->readerState->cardAtrLength = dwAtrLen;
-	rContext->readerState->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
-
-	rContext->pthCardEvent = card_event;
-	rv = SYS_ThreadCreate(&rContext->pthThread, 0,
+	rv = ThreadCreate(&rContext->pthThread, 0,
 		(PCSCLITE_THREAD_FUNCTION( ))EHStatusHandlerThread, (LPVOID) rContext);
 	if (rv)
 	{
-		Log2(PCSC_LOG_ERROR, "SYS_ThreadCreate failed: %s", strerror(rv));
+		Log2(PCSC_LOG_ERROR, "ThreadCreate failed: %s", strerror(rv));
 		return SCARD_E_NO_MEMORY;
 	}
 	else
 		return SCARD_S_SUCCESS;
 }
 
-static void incrementEventCounter(struct pubReaderStatesList *readerState)
-{
-	int counter;
-
-	counter = (readerState -> readerState >> 16) & 0xFFFF;
-	counter++;
-	readerState -> readerState = (readerState -> readerState & 0xFFFF)
-		+ (counter << 16);
-}
-
-static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
+static void EHStatusHandlerThread(READER_CONTEXT * rContext)
 {
 	LONG rv;
-	LPCSTR lpcReader;
-	DWORD dwStatus, dwReaderSharing;
+	const char *readerName;
+	DWORD dwStatus;
+	uint32_t readerState;
+	int32_t readerSharing;
 	DWORD dwCurrentState;
 	DWORD dwAtrLen;
 
@@ -240,22 +228,22 @@ static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
 	 * Zero out everything
 	 */
 	dwStatus = 0;
-	dwReaderSharing = 0;
-	dwCurrentState = 0;
 
-	lpcReader = rContext->lpcReader;
+	readerName = rContext->readerState->readerName;
 
-	dwAtrLen = rContext->readerState->cardAtrLength;
-	rv = IFDStatusICC(rContext, &dwStatus, rContext->readerState->cardAtr,
-		&dwAtrLen);
-	rContext->readerState->cardAtrLength = dwAtrLen;
+	rv = IFDStatusICC(rContext, &dwStatus);
 
-	if (dwStatus & SCARD_PRESENT)
+	if ((SCARD_S_SUCCESS == rv) && (dwStatus & SCARD_PRESENT))
 	{
-		dwAtrLen = MAX_ATR_SIZE;
+#ifdef DISABLE_AUTO_POWER_ON
+		rContext->readerState->cardAtrLength = 0;
+		rContext->readerState->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
+		readerState = SCARD_PRESENT;
+		Log1(PCSC_LOG_INFO, "Skip card power on");
+#else
+		dwAtrLen = sizeof(rContext->readerState->cardAtr);
 		rv = IFDPowerICC(rContext, IFD_POWER_UP,
-			rContext->readerState->cardAtr,
-			&dwAtrLen);
+			rContext->readerState->cardAtr, &dwAtrLen);
 		rContext->readerState->cardAtrLength = dwAtrLen;
 
 		/* the protocol is unset after a power on */
@@ -263,13 +251,9 @@ static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
 
 		if (rv == IFD_SUCCESS)
 		{
-			dwStatus |= SCARD_PRESENT;
-			dwStatus &= ~SCARD_ABSENT;
-			dwStatus |= SCARD_POWERED;
-			dwStatus |= SCARD_NEGOTIABLE;
-			dwStatus &= ~SCARD_SPECIFIC;
-			dwStatus &= ~SCARD_SWALLOWED;
-			dwStatus &= ~SCARD_UNKNOWN;
+			readerState = SCARD_PRESENT | SCARD_POWERED | SCARD_NEGOTIABLE;
+			rContext->powerState = POWER_STATE_POWERED;
+			Log1(PCSC_LOG_DEBUG, "powerState: POWER_STATE_POWERED");
 
 			if (rContext->readerState->cardAtrLength > 0)
 			{
@@ -282,27 +266,18 @@ static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
 		}
 		else
 		{
-			dwStatus |= SCARD_PRESENT;
-			dwStatus &= ~SCARD_ABSENT;
-			dwStatus |= SCARD_SWALLOWED;
-			dwStatus &= ~SCARD_POWERED;
-			dwStatus &= ~SCARD_NEGOTIABLE;
-			dwStatus &= ~SCARD_SPECIFIC;
-			dwStatus &= ~SCARD_UNKNOWN;
-			Log3(PCSC_LOG_ERROR, "Error powering up card: %d 0x%04X", rv, rv);
+			readerState = SCARD_PRESENT | SCARD_SWALLOWED;
+			rContext->powerState = POWER_STATE_UNPOWERED;
+			Log1(PCSC_LOG_DEBUG, "powerState: POWER_STATE_UNPOWERED");
+			Log3(PCSC_LOG_ERROR, "Error powering up card: %ld 0x%04lX", rv, rv);
 		}
+#endif
 
 		dwCurrentState = SCARD_PRESENT;
 	}
 	else
 	{
-		dwStatus |= SCARD_ABSENT;
-		dwStatus &= ~SCARD_PRESENT;
-		dwStatus &= ~SCARD_POWERED;
-		dwStatus &= ~SCARD_NEGOTIABLE;
-		dwStatus &= ~SCARD_SPECIFIC;
-		dwStatus &= ~SCARD_SWALLOWED;
-		dwStatus &= ~SCARD_UNKNOWN;
+		readerState = SCARD_ABSENT;
 		rContext->readerState->cardAtrLength = 0;
 		rContext->readerState->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
 
@@ -312,42 +287,31 @@ static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
 	/*
 	 * Set all the public attributes to this reader
 	 */
-	rContext->readerState->readerState = dwStatus;
-	rContext->readerState->readerSharing = dwReaderSharing =
-		rContext->dwContexts;
+	rContext->readerState->readerState = readerState;
+	rContext->readerState->readerSharing = readerSharing = rContext->contexts;
 
-	(void)StatSynchronize(rContext->readerState);
+	(void)EHSignalEventToClients();
 
 	while (1)
 	{
 		dwStatus = 0;
 
-		dwAtrLen = rContext->readerState->cardAtrLength;
-		rv = IFDStatusICC(rContext, &dwStatus,
-			rContext->readerState->cardAtr,
-			&dwAtrLen);
-		rContext->readerState->cardAtrLength = dwAtrLen;
+		rv = IFDStatusICC(rContext, &dwStatus);
 
 		if (rv != SCARD_S_SUCCESS)
 		{
-			Log2(PCSC_LOG_ERROR, "Error communicating to: %s", lpcReader);
+			Log2(PCSC_LOG_ERROR, "Error communicating to: %s", readerName);
 
 			/*
 			 * Set error status on this reader while errors occur
 			 */
-			rContext->readerState->readerState &= ~SCARD_ABSENT;
-			rContext->readerState->readerState &= ~SCARD_PRESENT;
-			rContext->readerState->readerState &= ~SCARD_POWERED;
-			rContext->readerState->readerState &= ~SCARD_NEGOTIABLE;
-			rContext->readerState->readerState &= ~SCARD_SPECIFIC;
-			rContext->readerState->readerState &= ~SCARD_SWALLOWED;
-			rContext->readerState->readerState |= SCARD_UNKNOWN;
+			rContext->readerState->readerState = SCARD_UNKNOWN;
 			rContext->readerState->cardAtrLength = 0;
 			rContext->readerState->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
 
 			dwCurrentState = SCARD_UNKNOWN;
 
-			(void)StatSynchronize(rContext->readerState);
+			(void)EHSignalEventToClients();
 		}
 
 		if (dwStatus & SCARD_ABSENT)
@@ -358,7 +322,7 @@ static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
 				/*
 				 * Change the status structure
 				 */
-				Log2(PCSC_LOG_INFO, "Card Removed From %s", lpcReader);
+				Log2(PCSC_LOG_INFO, "Card Removed From %s", readerName);
 				/*
 				 * Notify the card has been removed
 				 */
@@ -366,18 +330,12 @@ static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
 
 				rContext->readerState->cardAtrLength = 0;
 				rContext->readerState->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
-				rContext->readerState->readerState |= SCARD_ABSENT;
-				rContext->readerState->readerState &= ~SCARD_UNKNOWN;
-				rContext->readerState->readerState &= ~SCARD_PRESENT;
-				rContext->readerState->readerState &= ~SCARD_POWERED;
-				rContext->readerState->readerState &= ~SCARD_NEGOTIABLE;
-				rContext->readerState->readerState &= ~SCARD_SWALLOWED;
-				rContext->readerState->readerState &= ~SCARD_SPECIFIC;
+				rContext->readerState->readerState = SCARD_ABSENT;
 				dwCurrentState = SCARD_ABSENT;
 
-				incrementEventCounter(rContext->readerState);
+				rContext->readerState->eventCounter++;
 
-				(void)StatSynchronize(rContext->readerState);
+				(void)EHSignalEventToClients();
 			}
 
 		}
@@ -386,13 +344,22 @@ static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
 			if (dwCurrentState == SCARD_ABSENT ||
 				dwCurrentState == SCARD_UNKNOWN)
 			{
+#ifdef DISABLE_AUTO_POWER_ON
+				rContext->readerState->cardAtrLength = 0;
+				rContext->readerState->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
+				rContext->readerState->readerState = SCARD_PRESENT;
+				rContext->powerState = POWER_STATE_UNPOWERED;
+				Log1(PCSC_LOG_DEBUG, "powerState: POWER_STATE_UNPOWERED");
+				readerState = SCARD_PRESENT;
+				rv = IFD_SUCCESS;
+				Log1(PCSC_LOG_INFO, "Skip card power on");
+#else
 				/*
 				 * Power and reset the card
 				 */
-				dwAtrLen = MAX_ATR_SIZE;
+				dwAtrLen = sizeof(rContext->readerState->cardAtr);
 				rv = IFDPowerICC(rContext, IFD_POWER_UP,
-					rContext->readerState->cardAtr,
-					&dwAtrLen);
+					rContext->readerState->cardAtr, &dwAtrLen);
 				rContext->readerState->cardAtrLength = dwAtrLen;
 
 				/* the protocol is unset after a power on */
@@ -400,33 +367,26 @@ static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
 
 				if (rv == IFD_SUCCESS)
 				{
-					rContext->readerState->readerState |= SCARD_PRESENT;
-					rContext->readerState->readerState &= ~SCARD_ABSENT;
-					rContext->readerState->readerState |= SCARD_POWERED;
-					rContext->readerState->readerState |= SCARD_NEGOTIABLE;
-					rContext->readerState->readerState &= ~SCARD_SPECIFIC;
-					rContext->readerState->readerState &= ~SCARD_UNKNOWN;
-					rContext->readerState->readerState &= ~SCARD_SWALLOWED;
+					rContext->readerState->readerState = SCARD_PRESENT | SCARD_POWERED | SCARD_NEGOTIABLE;
+					rContext->powerState = POWER_STATE_POWERED;
+					Log1(PCSC_LOG_DEBUG, "powerState: POWER_STATE_POWERED");
 				}
 				else
 				{
-					rContext->readerState->readerState |= SCARD_PRESENT;
-					rContext->readerState->readerState &= ~SCARD_ABSENT;
-					rContext->readerState->readerState |= SCARD_SWALLOWED;
-					rContext->readerState->readerState &= ~SCARD_POWERED;
-					rContext->readerState->readerState &= ~SCARD_NEGOTIABLE;
-					rContext->readerState->readerState &= ~SCARD_SPECIFIC;
-					rContext->readerState->readerState &= ~SCARD_UNKNOWN;
+					rContext->readerState->readerState = SCARD_PRESENT | SCARD_SWALLOWED;
+					rContext->powerState = POWER_STATE_UNPOWERED;
+					Log1(PCSC_LOG_DEBUG, "powerState: POWER_STATE_UNPOWERED");
 					rContext->readerState->cardAtrLength = 0;
 				}
+#endif
 
 				dwCurrentState = SCARD_PRESENT;
 
-				incrementEventCounter(rContext->readerState);
+				rContext->readerState->eventCounter++;
 
-				(void)StatSynchronize(rContext->readerState);
+				Log2(PCSC_LOG_INFO, "Card inserted into %s", readerName);
 
-				Log2(PCSC_LOG_INFO, "Card inserted into %s", lpcReader);
+				(void)EHSignalEventToClients();
 
 				if (rv == IFD_SUCCESS)
 				{
@@ -447,33 +407,68 @@ static void EHStatusHandlerThread(PREADER_CONTEXT rContext)
 		/*
 		 * Sharing may change w/o an event pass it on
 		 */
-		if (dwReaderSharing != rContext->dwContexts)
+		if (readerSharing != rContext->contexts)
 		{
-			dwReaderSharing = rContext->dwContexts;
-			rContext->readerState->readerSharing = dwReaderSharing;
-			(void)StatSynchronize(rContext->readerState);
+			readerSharing = rContext->contexts;
+			rContext->readerState->readerSharing = readerSharing;
+			(void)EHSignalEventToClients();
 		}
 
 		if (rContext->pthCardEvent)
 		{
 			int ret;
+			int timeout;
 
-			ret = rContext->pthCardEvent(rContext->dwSlot);
-			if (IFD_NO_SUCH_DEVICE == ret)
+#ifndef DISABLE_ON_DEMAND_POWER_ON
+			if (POWER_STATE_POWERED == rContext->powerState)
+				/* The card is powered but not yet used */
+				timeout = PCSCLITE_POWER_OFF_GRACE_PERIOD;
+			else
+				/* The card is already in use or not used at all */
+#endif
+				timeout = PCSCLITE_STATUS_EVENT_TIMEOUT;
+
+			ret = rContext->pthCardEvent(rContext->slot, timeout);
+			if (IFD_SUCCESS != ret)
 				(void)SYS_USleep(PCSCLITE_STATUS_POLL_RATE);
 		}
 		else
 			(void)SYS_USleep(PCSCLITE_STATUS_POLL_RATE);
 
-		if (rContext->dwLockId == 0xFFFF)
+#ifndef DISABLE_ON_DEMAND_POWER_ON
+		/* the card is powered but not used */
+		(void)pthread_mutex_lock(&rContext->powerState_lock);
+		if (POWER_STATE_POWERED == rContext->powerState)
+		{
+			/* power down */
+			IFDPowerICC(rContext, IFD_POWER_DOWN, NULL, NULL);
+			rContext->powerState = POWER_STATE_UNPOWERED;
+			Log1(PCSC_LOG_DEBUG, "powerState: POWER_STATE_UNPOWERED");
+
+			/* the protocol is unset after a power down */
+			rContext->readerState->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
+		}
+
+		/* the card was in use */
+		if (POWER_STATE_GRACE_PERIOD == rContext->powerState)
+		{
+			/* the next state should be UNPOWERED unless the
+			 * card is used again */
+			rContext->powerState = POWER_STATE_POWERED;
+			Log1(PCSC_LOG_DEBUG, "powerState: POWER_STATE_POWERED");
+		}
+		(void)pthread_mutex_unlock(&rContext->powerState_lock);
+#endif
+
+		if (rContext->hLockId == 0xFFFF)
 		{
 			/*
 			 * Exit and notify the caller
 			 */
-			(void)StatSynchronize(rContext->readerState);
+			(void)EHSignalEventToClients();
 			Log1(PCSC_LOG_INFO, "Die");
-			rContext->dwLockId = 0;
-			(void)SYS_ThreadExit(NULL);
+			rContext->hLockId = 0;
+			(void)pthread_exit(NULL);
 		}
 	}
 }

@@ -3,8 +3,10 @@
  *
  * Copyright (C) 1999
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2002-2009
+ *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: dyn_generic.h 3260 2009-01-02 15:19:59Z rousseau $
+ * $Id: dyn_generic.h 5434 2010-12-08 14:13:21Z rousseau $
  */
 
 /**
@@ -15,17 +17,8 @@
 #ifndef __dyn_generic_h__
 #define __dyn_generic_h__
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 	int DYN_LoadLibrary(void **, char *);
 	int DYN_CloseLibrary(void **);
 	int DYN_GetAddress(void *, /*@out@*/ void **, const char *);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

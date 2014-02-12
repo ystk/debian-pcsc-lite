@@ -33,14 +33,17 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
-/* Libhal is available */
-#undef HAVE_LIBHAL
+/* Libudev is available */
+#undef HAVE_LIBUDEV
 
-/* Define to 1 if you have the <libhal.h> header file. */
-#undef HAVE_LIBHAL_H
+/* Define to 1 if you have the <libudev.h> header file. */
+#undef HAVE_LIBUDEV_H
 
 /* Libusb is available */
 #undef HAVE_LIBUSB
+
+/* Define to 1 if you have the <libusb.h> header file. */
+#undef HAVE_LIBUSB_H
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
@@ -50,6 +53,9 @@
 
 /* Define if you have POSIX threads libraries and header files. */
 #undef HAVE_PTHREAD
+
+/* Define to 1 if you have the `pthread_cancel' function. */
+#undef HAVE_PTHREAD_CANCEL
 
 /* Define to 1 if `stat' has the bug that it succeeds when given the
    zero-length file name argument. */
@@ -94,9 +100,6 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
-/* Define to 1 if you have the <usb.h> header file. */
-#undef HAVE_USB_H
-
 /* Define to 1 if you have the `vprintf' function. */
 #undef HAVE_VPRINTF
 
@@ -110,6 +113,9 @@
 /* Define to the sub-directory in which libtool stores uninstalled libraries.
    */
 #undef LT_OBJDIR
+
+/* Disable logging support */
+#undef NO_LOG
 
 /* Define to 1 if your C compiler doesn't accept -c and -o together. */
 #undef NO_MINUS_C_MINUS_O
@@ -129,8 +135,14 @@
 /* Define to the one symbol short name of this package. */
 #undef PACKAGE_TARNAME
 
+/* Define to the home page for this package. */
+#undef PACKAGE_URL
+
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+/* pcscd filename */
+#undef PCSCD_BINARY
 
 /* Enabled PC/SC lite features */
 #undef PCSCLITE_FEATURES
@@ -153,6 +165,12 @@
 
 /* directory containing IPC files */
 #undef USE_IPCDIR
+
+/* Use serial conf file mechanism */
+#undef USE_SERIAL
+
+/* Use USB hotplug mechanism */
+#undef USE_USB
 
 /* Version number of package */
 #undef VERSION

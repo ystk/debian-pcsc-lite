@@ -1,3 +1,4246 @@
+2012-06-26  Ludovic Rousseau
+
+	* [r6364] ChangeLog, configure.in: Release 1.8.4
+	* [r6363] UnitaryTests/SCardBeginTransaction_deadlock.py: Unitary
+	  test for locking in SCardBeginTransaction, SCardTransmit,
+	  SCardStatus and SCardReconnect
+	* [r6362] src/winscard_clnt.c: With changes in revisions 6358 to
+	  6361 it is now possible to use the same SCARDCONTEXT in different
+	  threads (same as on Windows)
+	  
+	  With one context per thread the locking was controlled by the
+	  daemon. With the same context for 2 threads the locking is
+	  controlled (first) on the client side since the 2 threads uses
+	  the same mutex.
+	* [r6361] src/winscard_clnt.c: Similar patch as in revision 6358
+	  but for SCardReconnect()
+	  
+	  Thanks to Aleksey Samsonov for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2012-q2/0109.html
+	* [r6360] src/winscard_clnt.c: Similar patch as in revision 6358
+	  but for SCardBeginTransaction()
+	  
+	  Thanks to Aleksey Samsonov for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2012-q2/0109.html
+	* [r6359] src/winscard_clnt.c: SCardStatus(): Similar patch as in
+	  revision 6358 but for SCardStatus()
+	  
+	  Thanks to Aleksey Samsonov for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2012-q2/0109.html
+	* [r6358] src/winscard_clnt.c: SCardTransmit(): do not hold the
+	  mutex when waiting in a SCARD_E_SHARING_VIOLATION loop
+	  
+	  If SCardTransmit() is waiting because the reader is used by
+	  another thread/process then we release the
+	  currentContextMap->mMutex, sleep, and try to acquire the mutex
+	  again. This will allow another thread using the same hContext to
+	  call SCardEndTransaction() otherwise the mutex is already held by
+	  SCardTransmit() and SCardEndTransaction() can't get it to finish
+	  the transaction => dead lock
+	  
+	  Thanks to Aleksey Samsonov for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2012-q2/0109.html
+
+2012-06-25  Ludovic Rousseau
+
+	* [r6357] src/PCSC/ifdhandler.h: Update Doxygen: document
+	  "libusb-1.0" scheme
+	  
+	  the "libusb" (for libusb-0.1) scheme has been updated to a
+	  "libusb-1.0" scheme (for libusb-1.0). The device name now
+	  contains the interface number. The bus and device are now
+	  integers instead of paths.
+	  
+	  The change has been done in revision 5044 (June 2010) but the API
+	  was not updated at the same time.
+	* [r6356] src/readerfactory.c: RFReaderInfoNamePort(): Compare only
+	  the significant part of the reader name
+	  
+	  Since revision 6354 the reader name may be truncated. Only the
+	  part in readerState->readerName (managed by RFAddReader()) is
+	  truntacted. The reader name stored the hotplug_*.c
+	  readerTracker[] structures is NOT truncated. So we must use a
+	  truncated compare function to find the reader name.
+	* [r6355] src/PCSC/pcsclite.h.in: Increase MAX_READERNAME from 100
+	  to 128
+	  
+	  It is not a perfect solution but it should limit the truncations
+	  of reader names as introduced in revision 6354.
+	* [r6354] src/readerfactory.c: RFAddReader(): truncates the reader
+	  name if too long
+	  
+	  The reader name size is limited to a total of MAX_READERNAME
+	  characters (100 by default). But some reader names are very long
+	  like: "SCM Microsystems Inc. SCR3340 - ExpressCard54 Smart Card
+	  Reader" and also provide a serial number and an interface name.
+	  So the name constructed by hotplug_libudev.c can be very long and
+	  longer than the 100 caracters.
+	  
+	  Closes: [#313684] "Reader name too long" error
+	  https://alioth.debian.org/tracker/?func=detail&atid=410085&aid=313684&group_id=30105
+	  http://archives.neohapsis.com/archives/dev/muscle/2012-q2/0113.html
+	* [r6353] src/hotplug_libudev.c: HPRescanUsbBus(): Display the full
+	  name of the removed reader
+
+2012-06-06  Ludovic Rousseau
+
+	* [r6325] src/tokenparser.l: Add [ and ] in the list of accepted
+	  characters for a reader name
+	  
+	  Readers with these characters caused a crash in libccid without
+	  any error message. This is because the reader entry was skiped
+	  and a reader name was then missing in the list. NULL is not a
+	  valid reader name :-)
+	  
+	  Thanks to Philippe Teuwen for the bug report.
+
+2012-06-05  Ludovic Rousseau
+
+	* [r6323] src/pcscd.h.in: Remove now useless PCSCLITE_SVC_IDENTITY
+	  
+	  PCSCLITE_SVC_IDENTITY is no more used since revision 6322.
+	* [r6322] src/winscard.c: SCardEstablishContext(): Use a full
+	  32-bits random value
+	  
+	  Use a full int range (32-bits) value instead of a 16-bits value.
+	  
+	  Note: this value is (still) not used/checked on the server side.
+	* [r6321] src/readerfactory.c, src/readerfactory.h: remove
+	  dwIdentity field from ReaderContext structure
+	  
+	  Since revision 6320 dwIdentity is no more used. So we can remove
+	  it.
+	* [r6320] src/readerfactory.c: RFCreateReaderHandle(): generates a
+	  32-bits random for hCard
+	  
+	  Since the change in revision 6316 dwIdentity is no more used to
+	  identify a hCard -> reader relation. So we can just generate a
+	  hCard as a full 32-bits random.
+	  
+	  The security should be improved with a change from 16-bits random
+	  to a 32-bits random. It will be more difficult for a rogue client
+	  to guess a valid hCard value.
+	* [r6319] src/sys_unix.c: SYS_RandomInt(): extend range if fEnd ==
+	  -1
+	  
+	  If fEnd parameter is set to -1 then the result of rand() is not
+	  truncated. This is usefull to get 32-bits of random with no
+	  constraint on the values.
+	* [r6318] src/readerfactory.c, src/readerfactory.h: Remove now
+	  unused function RFFindReaderHandle()
+	  
+	  Since revision 6317 this function is no more used.
+	* [r6317] src/winscard.c: Calls to RFFindReaderHandle() are now
+	  useless
+	  
+	  RFFindReaderHandle() was used to check the hCard is valid. Since
+	  revision 6316 the algorithm used in RFFindReaderHandle() is
+	  already used in RFReaderInfoById().
+	  
+	  So calling RFFindReaderHandle() after RFReaderInfoById() (as it
+	  was done) is now useless.
+	* [r6316] src/readerfactory.c, src/readerfactory.h: Use handlesList
+	  to find a hCard -> reader link
+	  
+	  hCard handles are stored in the handlesList list of readers. The
+	  use of dwIdentity just duplicate the information and is no more
+	  needed.
+	  
+	  The algorithm is the same as in RFFindReaderHandle()
+
+2012-06-02  Ludovic Rousseau
+
+	* [r6315] src/ifdwrapper.c: Fix compiler failure for static driver
+	  
+	  CFLAGS="-DPCSCLITE_STATIC_DRIVER -DIFDHANDLERv3" ./configure make
+	  [...] ifdwrapper.c: In function ‘IFDOpenIFD’:
+	  ifdwrapper.c:125:15: error: ‘READER_CONTEXT’ has no member named
+	  ‘lpcDevice’ ifdwrapper.c:126:57: error: ‘READER_CONTEXT’ has no
+	  member named ‘lpcDevice’
+
+2012-05-28  Ludovic Rousseau
+
+	* [r6312] src/ifdwrapper.c: IFDPowerICC(): check the value returned
+	  by IFDStatusICC()
+	  
+	  The reader may be gone at this step. See
+	  http://archives.neohapsis.com/archives/dev/muscle/2012-q2/0041.html
+
+2012-05-18  Ludovic Rousseau
+
+	* [r6302] src/PCSC/ifdhandler.h: Remove an extra '.' at the end of
+	  the URL
+	  
+	  Thanks to "helpcrypto" for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2012-q2/0036.html
+	* [r6299] configure.in: warning: 'libpcsclite.la': linking libtool
+	  libraries using a non-POSIX archiver requires 'AM_PROG_AR' in
+	  'configure.in'
+	* [r6298] configure.in: autoupdated using autoupdate (GNU Autoconf)
+	  2.69
+
+2012-04-05  Ludovic Rousseau
+
+	* [r6261] UnitaryTests/FEATURE_GET_TLV_PROPERTIES.py: Unitary test
+	  for FEATURE_GET_TLV_PROPERTIES
+
+2012-04-04  Ludovic Rousseau
+
+	* [r6256]
+	  UnitaryTests/FEATURE_CCID_ESC_COMMAND_Gemalto_features.py: Catch
+	  control() exception
+	  
+	  If the driver is not configured with
+	  DRIVER_OPTION_CCID_EXCHANGE_AUTHORIZED then the control() will
+	  fail with a SmartcardException() exception.
+
+2012-03-30  Ludovic Rousseau
+
+	* [r6253] ChangeLog, configure.in: Release 1.8.3
+
+2012-03-25  Ludovic Rousseau
+
+	* [r6249] UnitaryTests/FEATURE_CCID_ESC_COMMAND.py: This file is
+	  now more or less a duplicate of
+	  FEATURE_CCID_ESC_COMMAND_Xiring.py
+	  
+	  So remove it.
+	* [r6248] UnitaryTests/FEATURE_CCID_ESC_COMMAND_Xiring.py: Add
+	  GET_SN command and some documentation
+
+2012-03-24  Ludovic Rousseau
+
+	* [r6247] UnitaryTests/FEATURE_CCID_ESC_COMMAND_Xiring.py: Unitary
+	  test for FEATURE_CCID_ESC_COMMAND and Xiring Leo readers
+	* [r6246] UnitaryTests/FEATURE_CCID_ESC_COMMAND2.py,
+	  UnitaryTests/FEATURE_CCID_ESC_COMMAND_Gemalto_features.py: Rename
+	  FEATURE_CCID_ESC_COMMAND2.py in
+	  FEATURE_CCID_ESC_COMMAND_Gemalto_features.p
+
+2012-03-23  Ludovic Rousseau
+
+	* [r6244] UnitaryTests/control_get_firmware.py: Use
+	  getTlvProperties() and PCSCv2_PART10_PROPERTY_wIdVendor
+	  
+	  We now check the reader is a Gemalto one before sending an escape
+	  code
+
+2012-03-20  Ludovic Rousseau
+
+	* [r6241] src/PCSC/reader.h: Add new properties for
+	  FEATURE_GET_TLV_PROPERTIES
+	  
+	  dwMaxAPDUDataSize, wIdVendor and wIdProduct are/will be defined
+	  in PCSC v2 part 10 release 2.02.09
+
+2012-02-28  Ludovic Rousseau
+
+	* [r6236] src/spy/pcsc-spy: _SCardControl(): parse the received
+	  buffer only on success
+	  
+	  The received buffer (answer) is valid only if the command
+	  execution succeeded.
+	* [r6235] src/spy/pcsc-spy: Add support of SCardControl132 for OS X
+	* [r6234] src/spy/libpcscspy.c: Fix compiler warning on OS X
+	  
+	  libpcscspy.c:580: warning: no previous prototype for
+	  'SCardControl132'
+
+2012-02-21  Ludovic Rousseau
+
+	* [r6229] src/debuglog.c: log_xxd(): do not log with negative
+	  length
+	  
+	  Thanks to Godfrey Chung for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2012-q1/0043.html
+
+2012-02-04  Ludovic Rousseau
+
+	* [r6215] src/configfile.l: Skip non regular or "hidden" config
+	  files
+	  
+	  Closes Debian bug #658322 "pcscd: fails to start if config
+	  directory contains subdirectories"
+
+2012-01-24  Ludovic Rousseau
+
+	* [r6201] src/spy/pcsc-spy.pod: Document usage on Mac OS X
+	* [r6200] src/spy/libpcscspy.c: Mac OS X uses SCardControl132
+	  instead of SCardControl
+	  
+	  On Mac OS X SCardControl() is used for the old version of the API
+	  (without the dwControlCode) and SCardControl132() for the new
+	  API.
+	  
+	  From /System/Library/Frameworks/PCSC.framework/Headers/winscard.h
+	  /* To support the newer version of SCardControl, we define it as
+	  follows. The old version number was 1.1.2, the new call appears
+	  in 1.3.2 of pcsc-lite (or perhaps earlier). */
+	  
+	  #if !defined(USE_SCARD_CONTROL_112) #define SCardControl
+	  SCardControl132 #endif /* USE_SCARD_CONTROL_112 */
+	* [r6199] src/spy/Makefile.am: Generate a Mac OS X PCSC.framework
+	  hierarchy
+	  
+	  Mac OS X uses a framework and not just a library. The hiearchy is
+	  simple: PCSC.framework PCSC.framework/PCSC ->
+	  Versions/Current/PCS PCSC.framework/Versions
+	  PCSC.framework/Versions/A PCSC.framework/Versions/A/PCSC
+	  PCSC.framework/Versions/Current -> A
+	* [r6198] src/spy/libpcscspy.c: Add Mac OS X support
+	* [r6197] src/spy/libpcscspy.c: Use ULONG * instead of unsigned
+	  long *
+	  
+	  See comment in revision 6195
+	* [r6196] src/spy/libpcscspy.c: Reformat
+	* [r6195] src/spy/libpcscspy.c: Use LONG/ULONG instead of
+	  long/unsigned long
+	  
+	  The problem is that PCSC on Mac OS X do not use long but
+	  uint32_t. So a (LONG * or LPDWORD *) parameter (like pcchReaders
+	  in SCardListReaders) is not the same on Linux and Mac OS X for
+	  64-bits CPUs.
+	  
+	  LONG is correctly defined on both Linux and Mac OS X so we use it
+	  instead.
+	* [r6194] src/spy/libpcscspy.c: load_lib(): check dlsym() return
+	  correct values
+	  
+	  If the pointer returned by dlsym("SCardEstablishContext") is our
+	  own SCardEstablishContext() function then we will finish in a
+	  endless recursion. Something went wrong and we stop immediatly
+	  instead of crashing when the call stack is full.
+	* [r6193] src/spy/libpcscspy.c: Use an internal
+	  pcsc_stringify_error() by default
+	  
+	  If the loading of the PCSC library fails all the functions are
+	  set to use internal_error(). The only expection is now
+	  pcsc_stringify_error() because the return value is not a LONG
+	  error code but a C-string.
+	  
+	  This change fixes a crash when the application called printf() to
+	  display the "string" returned by pcsc_stringify_error() if
+	  SCardEstablishContext() failed in the spying library.
+
+2012-01-18  Ludovic Rousseau
+
+	* [r6185] ChangeLog, configure.in: Release 1.8.2
+	* [r6184] src/spy/pcsc-spy, src/spy/pcsc-spy.pod: Add support of
+	  --version to pcsc-spy
+	* [r6183] src/spy/Makefile.am, src/spy/pcsc-spy.1,
+	  src/spy/pcsc-spy.pod: Use POD format for pcsc-spy manpage
+	  
+	  Writting nroff manpage directly is not easy. The Perl POD (plain
+	  old documentation) is much more friendly to read/write and
+	  pod2man is your friend.
+	* [r6182] src/spy/pcsc-spy: print_usage(): display command name
+	* [r6181] src/spy/pcsc-spy: Document [-h|--help] argument
+
+2012-01-15  Ludovic Rousseau
+
+	* [r6178] src/spy/Makefile.am: Use dist_man_MANS to distribute the
+	  manpage
+	  
+	  The pcsc-spy.1 manpage is now included in the .tar.bz2 archive
+	* [r6177] src/spy/Makefile.am, src/spy/libpcscspy.c,
+	  src/spy/pcsc-spy.c: Rename pcsc-spy.c to libpcscspy.c
+	  
+	  We have a pcsc-spy Python binary so pcsc-spy.c is not a correct
+	  filename for a different library. Make is trying to generate
+	  pcsc-spy from pcsc-spy.c and that fails.
+	* [r6176] src/spy/Makefile.am: Remove pcsc-spy.py from EXTRA_DIST
+	  
+	  The command is now named pcsc-spy and is distributed by default
+	* [r6175] src/spy/Makefile.am, src/spy/README.txt,
+	  src/spy/pcsc-spy.1: Convert README.txt into pcsc-spy.1
+	  
+	  Since we now provide the pcsc-spy binary we must also provide a
+	  manpage for the command.
+	* [r6174] src/spy/pcsc-spy: Update copyright date
+	* [r6173] src/spy/pcsc-spy: Change Shebang to /usr/bin/python
+	  
+	  Comply with Debian Python Policy 3.1 Programs using the default
+	  python
+	  http://www.debian.org/doc/packaging-manuals/python-policy/ch-programs.html
+	* [r6172] src/spy/Makefile.am: Install pcsc-spy as a normal binary
+	  
+	  By default the command is installed in $(prefix)/bin/pcsc-spy
+	* [r6171] src/spy/pcsc-spy, src/spy/pcsc-spy.py: Rename the
+	  pcsc-spy command without the .py extension
+	  
+	  Comply to Debian Policy 10.4 Scripts
+	  http://www.debian.org/doc/debian-policy/ch-files.html#s-scripts
+
+2012-01-01  Ludovic Rousseau
+
+	* [r6156] src/PCSC/ifdhandler.h: Add Doxygen documentation for
+	  TAG_IFD_SLOTNUM, TAG_IFD_STOP_POLLING_THREAD and
+	  TAG_IFD_POLLING_THREAD_WITH_TIMEOUT
+
+2011-12-15  Ludovic Rousseau
+
+	* [r6139] src/spy/pcsc-spy.c: spy_line(): use return instead of
+	  exit().
+	  
+	  A library should not use exit() but return an error code instead.
+	  Reported by Debian lintian.
+
+2011-12-05  Ludovic Rousseau
+
+	* [r6132] src/tokenparser.l: bundleRelease(): fix a memory leak
+	  
+	  We must also free the key of the element.
+	* [r6131] src/tokenparser.l: eval_value(): avoid a buffer read
+	  overflow in &amp; management
+	  
+	  We shall stop the loop when we find a \0 in the source, not in
+	  the destination (4 characters later)
+	* [r6130] src/hotplug_libudev.c: HPReadBundleValues(): remove extra
+	  free()
+	  
+	  Do not free memory allocated for CFBundleName since we use this
+	  value directly in driverTracker[listCount].CFBundleName =
+	  CFBundleName; (line 180) instead of using a strdup(), because the
+	  string is the same for many entries
+	* [r6129] src/readerfactory.c: RFRemoveReader(): add 2 missing
+	  pthread_mutex_destroy()
+	  
+	  Mutexes for powerState_lock and handlesList_lock were never
+	  destroyed.
+	  
+	  It was not a real problem since from manpage
+	  pthread_mutex_destroy(3): In the LinuxThreads implementation, no
+	  resources are associated with mutex objects, thus
+	  pthread_mutex_destroy actually does nothing except checking that
+	  the mutex is unlocked.
+	* [r6128] src/readerfactory.c: RFRemoveReader(): fix a bug with a
+	  multi-slot reader
+	  
+	  The value sContext->mMutex must be reset to NULL only for the
+	  last slot.
+
+2011-11-26  Ludovic Rousseau
+
+	* [r6120] etc/pcscd.service.in: StandardOutput=syslog is now the
+	  default since at least systemd 37
+
+2011-11-25  Ludovic Rousseau
+
+	* [r6118] ChangeLog, configure.in: Release 1.8.1
+	* [r6117] src/spy/Makefile.am: Also distribute pcsc-spy.py
+	  install_spy.sh uninstall_spy.sh README.txt
+
+2011-11-19  Ludovic Rousseau
+
+	* [r6111] ChangeLog, configure.in: Release 1.8.0
+	* [r6110] src/PCSC/reader.h: Add FEATURE_EXECUTE_PACE from PCSC v2
+	  Part 10 Amendment 1 2011-06-03
+
+2011-11-18  Ludovic Rousseau
+
+	* [r6109] UnitaryTests/FEATURE_CCID_ESC_COMMAND2.py: Proprietary
+	  commands for Gemalto readers This is implemented by the Gemalto
+	  Pinpad v2 and C200 readers
+	* [r6108] src/spy/pcsc-spy.py: Terminate the process with Ctrl-C
+	  
+	  Thanks to Martin Paljak for the patch
+	* [r6107] src/spy/README.txt: Typo
+
+2011-11-14  Ludovic Rousseau
+
+	* [r6105] configure.in, src/pcscdaemon.c, src/winscard_clnt.c:
+	  Remove pcscd autostart feature
+	  
+	  The auto start feature (launch pcscd from the library if not
+	  already running) was a fragile code with some issues. This
+	  service is far better implemented by systemd.
+	  
+	  Thanks to Kalev Lember for pushing the systemd patches.
+
+2011-11-11  Ludovic Rousseau
+
+	* [r6104] src/winscard_clnt.c: Do not try to autostart if the
+	  system was booted using systemd
+	  
+	  The --disable-autostart configure option should now be useless on
+	  systems using systemd.
+
+2011-11-10  Ludovic Rousseau
+
+	* [r6102] src/pcscdaemon.c: Revert revision 6045
+	  
+	  We must fork+exit in autoexit and foreground mode or the
+	  application will not continue its execution and will wait for the
+	  end of pcscd
+
+2011-10-31  Ludovic Rousseau
+
+	* [r6095] src/spy/pcsc-spy.py: Add support of -d|--diffable to
+	  generate logs without too much variable parts so 2 logs can be
+	  compared using diff(1)
+	  
+	  Variable parts are replaced by "????". They are: - execution time
+	  - hCard - hContext
+	* [r6094] src/spy/pcsc-spy.py: Fix cut-n-paste error
+	* [r6093] src/spy/pcsc-spy.py: Add support of --nocolor command
+	  line argument
+	* [r6092] src/spy/install_spy.sh: Make the script idempotent
+	  
+	  The symbolic links are repared if needed. They were broken after
+	  the sequence: $ spy/install_spy.sh $ make install
+	* [r6091] src/spy/pcsc-spy.py: Exit in exception if the application
+	  exited in the middle of SCardGetStatusChange() like it is the
+	  case for pcsc_scan
+
+2011-10-30  Ludovic Rousseau
+
+	* [r6090] src/tokenparser.l: Convert the firt &amp; into & in a
+	  
+	  Allow to use names like Giesecke &amp; Devrient
+	* [r6089] src/tokenparser.l: Add ';' in the list of valid caracters
+	  
+	  Allow to use "&amp;" for "&" like in "Giesecke &amp; Devrient"
+	  See revision 6088
+
+2011-10-25  Ludovic Rousseau
+
+	* [r6083] UnitaryTests/ThreadSafe.py: Start loops at 0 instead of 1
+	  to have the correct count
+	* [r6082] src/spy/pcsc-spy.py: Give statistics per thread
+	* [r6081] .gitignore: Update for spy/ directory
+	* [r6080] src/spy/pcsc-spy.py: Use a 4 spaces indentation for each
+	  thread
+	* [r6079] src/spy/pcsc-spy.py: Display statistics sorted by
+	  total_time
+
+2011-10-24  Ludovic Rousseau
+
+	* [r6078] src/spy/pcsc-spy.py: Parse FEATURE_VERIFY_PIN_DIRECT
+	  structure
+	* [r6077] src/spy/pcsc-spy.py: The byte buffer do not contain the
+	  ASCII dump any more. So no need to remove it.
+	* [r6076] src/spy/pcsc-spy.py: Parse FEATURE_IFD_PIN_PROPERTIES
+	* [r6073] src/spy/pcsc-spy.py: Remove debug line
+	* [r6072] src/pcscdaemon.c: main(): do not fail if pcscd.comm is
+	  already present but pcscd.pid is not present.
+	  
+	  This is the case if pcscd has been configured in systemd but has
+	  been stoped. When launched by hand (for a debug session for
+	  example) the pcscd.comm file is still present but not used
+	  anymore.
+	  
+	  The pcscd.comm file will be removed when pcscd manually started
+	  will exit but the file will be recreated by "systemctl start
+	  pcscd.service"
+	* [r6071] src/pcscd.h.in: Update copyright date
+	* [r6070] src/pcscd.h.in: propset svn:keywords "Id"
+	* [r6069] src/pcscd.h.in: MAX_BUFFER_SIZE and
+	  MAX_BUFFER_SIZE_EXTENDED are already defined in
+	  PCSC/pcsclite.h.in
+
+2011-10-22  Ludovic Rousseau
+
+	* [r6063] src/PCSC/pcsclite.h.in: Update MAX_BUFFER_SIZE_EXTENDED
+	  by adding 2 bytes for the status word
+	* [r6062] etc/pcscd.service.in: Remove WantedBy=multi-user.target
+	  
+	  The purpose of using systemd is to start pcscd on demand. So no
+	  need to always start it at boot.
+	* [r6061] etc/pcscd.service.in: Start pcscd in autoexit mode to: -
+	  free RAM and CPU ressources - enable the USB selective suspend
+	  http://ludovicrousseau.blogspot.com/2011/04/libccid-and-usb-selective-suspend.html
+	* [r6060] etc/pcscd.service.in: Remove now useless
+	  After=syslog.target line for recent systemd
+
+2011-10-21  Ludovic Rousseau
+
+	* [r6059] src/spy/pcsc-spy.py: support -n | --nocolor command line
+	  argument to remove colorization
+	* [r6058] src/spy/pcsc-spy.py: Remove debug line
+	* [r6057] src/simclist.c, src/simclist.h: Upgrade from simclist 1.5
+	  to 1.6
+
+2011-10-20  Ludovic Rousseau
+
+	* [r6056] src/winscard_clnt.c: Remove DO_CHECK_SAME_PROCESS code
+	  since we now use pthread_atfork() since revision 6055
+	* [r6055] src/winscard_clnt.c: SCardEstablishContext(): Invalidate
+	  all the handles in the son after a fork
+	  
+	  The Unitary Test UnitaryTests/SCard_fork.py now works
+	  
+	  We now use pthread_atfork() instead of the DO_CHECK_SAME_PROCESS
+	  hack (disabled by default)
+	* [r6054] src/spy/pcsc-spy.py: log_out_n_str(): add special case
+	  for a null string length
+	* [r6053] src/spy/README.txt: Documentation file
+	* [r6052] src/spy/pcsc-spy.c, src/spy/pcsc-spy.py: Add support of
+	  SCardCancel() and multi-threaded applications
+	  
+	  The pcsc-spy.py client is now a demultiplexer with one thread and
+	  data queue per applicatin thread. Each log line contains the
+	  application threadID.
+	* [r6051] src/spy/install_spy.sh, src/spy/uninstall_spy.sh: Use set
+	  -e to exit on first error
+	* [r6050] src/spy/install_spy.sh: Fail if libpcsclite_nospy.so.1
+	  already exists
+
+2011-10-15  Ludovic Rousseau
+
+	* [r6045] src/pcscdaemon.c: main(): do not fork+exit if we are in
+	  autoexit mode and also in foreground mode
+	* [r6044] src/pcscdaemon.c: signal_trap(): if we exit after a
+	  SIGALRM then exit with EXIT_SUCCESS
+	  
+	  systemd should be happier with a process exiting normally
+	* [r6043] src/winscard_msg_srv.c: InitializeSocket(): use a union
+	  for sockaddr structsas suggested by systemd sample code at
+	  http://0pointer.de/blog/projects/socket-activation.html
+	* [r6042] src/spy/pcsc-spy.c: Use a global symbol for the library
+	  handle
+	  
+	  Make coverity more happy leaked_storage: Variable "handle" going
+	  out of scope leaks the storage it points to. noescape: Variable
+	  "handle" is not freed or pointed-to in function "dlsym".
+
+2011-10-11  Ludovic Rousseau
+
+	* [r6029] src/pcscdaemon.c: main(): do not fork+exit if started in
+	  --auto-exit mode by systemd
+	  
+	  systemd should restart the daemon again if needed
+	* [r6028] src/debuglog.c: log_line(): flush stdout after each line
+	  so that debug messages are immediately available for systemd
+	* [r6027] src/pcscdaemon.c: main(): store the pid _after_ any fork
+	  
+	  Revision 6019 moved the AutoExit fork+exit later in the code. We
+	  now must move the pcscd.pid file creation after the fork+exit.
+	* [r6026] src/pcscdaemon.c: main(): log a message when pcscd is
+	  started by systemd
+
+2011-10-07  Ludovic Rousseau
+
+	* [r6019] src/pcscdaemon.c: main(): move AutoExit fork+exit later
+	  in the code
+	  
+	  We should be able to return with an error code if something went
+	  wrong in the pcscd initialization so that the client get the
+	  error code and do not wait for 5 seconds.
+	  
+	  See Red Hat Bug 653903 - elinks takes 10 seconds to start
+	* [r6018] src/winscard_clnt.c: SCardEstablishContext(): check the
+	  return value of pcscd
+	  
+	  In auto-start mode the client check the value returned by pcscd.
+	  If pcscd failed to start then we just return SCARD_E_NO_SERVICE
+	  without waiting for 5 seconds.
+	  
+	  See Red Hat Bug 653903 - elinks takes 10 seconds to start
+	* [r6017] src/pcscdaemon.c: print_usage(): reformat output
+	* [r6016] src/winscard_clnt.c: SCardEstablishContext(): If the
+	  daemon is not present then just fail without waiting.
+	  
+	  See Red Hat Bug 653903 - elinks takes 10 seconds to start
+	  https://bugzilla.redhat.com/show_bug.cgi?id=653903
+	* [r6015] src/spy/pcsc-spy.py: log_buffer(): display NULL if the
+	  buffer is a NULL pointer
+	  
+	  This is used to differentiate a NULL buffer from an empty buffer.
+	* [r6014] src/spy/pcsc-spy.py: log_buffer(): use upper case for
+	  hexadecimal dump
+	* [r6013] src/spy/pcsc-spy.py: log_buffer(): use '.' also for
+	  values >= 127
+	* [r6012] src/spy/pcsc-spy.py: log_buffer(): check for an empty
+	  buffer
+	* [r6011] src/spy/pcsc-spy.py: If the field to log starts with a
+	  "0x" we also log the decimal value
+	* [r6010] src/spy/pcsc-spy.c: spy_buffer(): use spy_line_direct()
+	  to log a line without formatting and size limit
+	* [r6009] src/spy/pcsc-spy.c: spy_line(): Emergency exit if the
+	  buffer is too small
+	  
+	  The line is limited to 256 characters. Dumping a buffer of more
+	  than 256/3 = 85 bytes wil overflow the line buffer.
+	* [r6008] src/spy/install_spy.sh, src/spy/pcsc-spy.c,
+	  src/spy/uninstall_spy.sh: Allow to replace the real library by
+	  the spy one
+	  
+	  This is isefull for interpreted languages like Python and Perl
+	  with the PC/SC wrapper.
+	  
+	  The scripts install_spy.sh and uninstall_spy.sh do the files
+	  changes in /usr/lib
+	* [r6007] src/spy/pcsc-spy.py: Remove trailing space
+	* [r6006] src/spy/pcsc-spy.py: Use a text instead of numerical
+	  constant to specify the direction
+	* [r6005] src/spy/pcsc-spy.c, src/spy/pcsc-spy.py: Dump bytes
+	  buffer in a formatted ASCII + Hex dump
+
+2011-10-05  Ludovic Rousseau
+
+	* [r6003] doc/example/pcsc_demo.c: Move from GNU GPL v2+ to v3+
+	* [r6002] UnitaryTests/MCT_ReaderDirect.py,
+	  UnitaryTests/SCardBeginTransaction_Disconnect.py,
+	  UnitaryTests/SCardBeginTransaction_ExclusiceMode.py,
+	  UnitaryTests/SCardCancel.py, UnitaryTests/SCardCancel2.py,
+	  UnitaryTests/SCardConnect_DIRECT.py,
+	  UnitaryTests/SCardConnect_DIRECT2.py,
+	  UnitaryTests/SCardGetAttrib.py,
+	  UnitaryTests/SCardGetStatusChange.py,
+	  UnitaryTests/SCardGetStatusChange2.py,
+	  UnitaryTests/SCardReconnect.py, UnitaryTests/SCardStatus.py,
+	  UnitaryTests/SCard_fork.py, UnitaryTests/ThreadSafe.py,
+	  UnitaryTests/ThreadSafeConnect.py,
+	  UnitaryTests/control_get_firmware.py,
+	  UnitaryTests/control_switch_interface.py,
+	  UnitaryTests/getAttrib.py, UnitaryTests/reset_card.py,
+	  UnitaryTests/stress_apdu.py, UnitaryTests/stress_get_firmware.py,
+	  UnitaryTests/transmit_loop.py: Move from GPL v2+ to GPL v3+
+	* [r6001] UnitaryTests/FEATURE_CCID_ESC_COMMAND.py: Unitary test
+	  for FEATURE_CCID_ESC_COMMAND
+
+2011-10-04  Ludovic Rousseau
+
+	* [r5999] src/spy/Makefile.am: The winscard.h is in the srcdir not
+	  builddir
+	  
+	  Fix compiler warning (when using make distcheck):
+	  ../../../src/spy/pcsc-spy.c:32:22: fatal error: winscard.h: No
+	  such file or directory
+	* [r5997] src/spy/pcsc-spy.py: Use the command line argument (if
+	  any) as the log file
+	  
+	  If a command argument is passed we use it instead of the default
+	  ~/pcsc-spy FIFO file. It is then possible to record an execution
+	  log and use pcsc-spy.py multiple times on the same log.
+	  
+	  To create the log file just do: $ mkfifo ~/pcsc-spy $ cat
+	  ~/pcsc-spy > logfile and run your PC/SC application
+	* [r5996] src/spy/pcsc-spy.py: Make pep8 happy
+	* [r5995] src/spy/pcsc-spy.py: Parse FEATURE_GET_TLV_PROPERTIES
+	  results
+	* [r5994] src/spy/pcsc-spy.py: Parse tge
+	  CM_IOCTL_GET_FEATURE_REQUEST results
+	  
+	  The parsing will also learn the values associate to tags for
+	  future calls.
+	* [r5993] src/hotplug_linux.c: Use %zd instead of %ld for a size_t
+	  integer
+	  
+	  Fix a warning when compiling on a 32-bits system:
+	  hotplug_linux.c: In function 'HPReadBundleValues':
+	  hotplug_linux.c:188: warning: format '%ld' expects type 'long
+	  int', but argument 6 has type 'unsigned int'
+
+2011-10-02  Ludovic Rousseau
+
+	* [r5992] src/readerfactory.c: Use %zd instead of %ld for a size_t
+	  integer
+	  
+	  Fix 2 compiler warnings: readerfactory.c: In function
+	  `RFAddReader': readerfactory.c:124:3: warning: format `%ld'
+	  expects argument of type `long int', but argument 6 has type
+	  `size_t' [-Wformat] readerfactory.c:124:3: warning: format `%ld'
+	  expects argument of type `long int', but argument 7 has type
+	  `unsigned int' [-Wformat]
+
+2011-09-29  Ludovic Rousseau
+
+	* [r5988] src/spy/pcsc-spy.py: Log SCardControl() dwControlCode in
+	  a human form
+	* [r5987] src/spy/pcsc-spy.py: Remove duplicate 0x00090303 key
+	* [r5986] src/spy/pcsc-spy.py: Fix some pylint warnings
+	* [r5985] src/spy/pcsc-spy.c, src/spy/pcsc-spy.py: Convert return
+	  value from hexa to text
+	  
+	  SCARD_E_NOT_TRANSACTED is more human friendly than 0x80100016
+	* [r5984] src/spy/pcsc-spy.py: log_in2() & log_out2(): return the
+	  data line read by the method
+	  
+	  This will allow to do some data processing on the debug data in
+	  the caller method.
+
+2011-09-27  Ludovic Rousseau
+
+	* [r5983] src/spy/pcsc-spy.c: Fix compiler warning
+	  
+	  pcsc-spy.c: In function 'SCardGetAttrib': pcsc-spy.c:635:6:
+	  warning: pointer targets in assignment differ in signedness
+	  [-Wpointer-sign]
+	* [r5982] src/spy/pcsc-spy.c: Display the ASCII equivalent of a
+	  "binary" buffer
+	* [r5981] src/spy/pcsc-spy.c: SCardGetAttrib(): manage
+	  SCARD_AUTOALLOCATE case
+	* [r5980] src/spy/pcsc-spy.py: Display dwCurrentState &
+	  dwEventState parameter in human form
+	* [r5979] src/spy/pcsc-spy.py: log_out_dwActiveProtocol():
+	  correctly display UNKNOWN protocol
+	* [r5978] src/spy/pcsc-spy.py: Display dwActiveProtocol parameter
+	  in human form
+	* [r5977] src/spy/pcsc-spy.py: Display dwPreferredProtocols
+	  parameter in human form
+	* [r5976] src/spy/pcsc-spy.py: Fix 2 pep8 issues
+	* [r5975] src/spy/pcsc-spy.py: Display dwShareMode parameter in
+	  human form
+	* [r5974] src/spy/pcsc-spy.py: Display dwAttrId parameter in human
+	  form
+	* [r5973] src/spy/pcsc-spy.py: Display dwDisposition parameter in
+	  human form
+	* [r5972] src/spy/pcsc-spy.c, src/spy/pcsc-spy.py: Add support of
+	  SCardBeginTransaction() and SCardEndTransaction()
+	* [r5971] src/spy/pcsc-spy.py: Add a missing space for a correct
+	  formatting
+	* [r5970] src/spy/pcsc-spy.c: spy_quit(): rv is a LONG not int
+	  
+	  The problem occurs on 64-bits systems with sign extension from
+	  0x80100016 to 0xFFFFFFFF80100016
+	* [r5969] src/spy/pcsc-spy.c: Add support of pcsc_stringify_error()
+	* [r5968] src/spy/pcsc-spy.c: load_lib(): handle dlsym() errors
+	  
+	  log an error and return SCARD_F_INTERNAL_ERROR if dlopen() or
+	  dlsym() fails.
+	* [r5967] src/spy/pcsc-spy.c: load_lib(): do not call dlclose()
+	  
+	  Stupuid bug. We still need to access the symbols after the
+	  library is loaded. dlclose() should be closed only when the
+	  library is not used anymore (i.e. we don't know when).
+
+2011-09-24  Ludovic Rousseau
+
+	* [r5965] doc/doxygen.conf.in: Update for Doxygen 1.7.4
+	* [r5964] src/error.c, src/winscard_clnt.c: Doxygen: fixes and
+	  English improvement
+	* [r5963] src/winscard_clnt.c: Doxygen: remove a note about
+	  SCardControl() API change
+	  
+	  Between pcsc-lite 1.2.0 (Oct 2003) and 1.2.9-beta1 (May 2004) the
+	  API changed and the new parameter dwControlCode was added.
+	* [r5962] src/PCSC/winscard.h, src/atrhandler.c, src/atrhandler.h,
+	  src/winscard.c, src/winscard_clnt.c: fix typo: smartcard -> smart
+	  card
+	* [r5961] src/error.c: Doxygen: fix a bug in the doc
+
+2011-09-13  Ludovic Rousseau
+
+	* [r5955] configure.in: Generate src/spy/Makefile
+	* [r5954] src/Makefile.am, src/pcsc-spy.c, src/pcsc-spy.py,
+	  src/spy, src/spy/Makefile.am, src/spy/pcsc-spy.c,
+	  src/spy/pcsc-spy.py: Move spy tools into the spy/ directory
+	* [r5953] src/pcsc-spy.py: Remove debug line
+	* [r5951] src/pcsc-spy.c, src/pcsc-spy.py: Add Timing information
+
+2011-09-09  Ludovic Rousseau
+
+	* [r5949] src/pcsc-spy.c: Fix compiler warning
+	  
+	  pcsc-spy.c:243:28: warning: comparison between signed and
+	  unsigned integer expressions [-Wsign-compare]
+	* [r5948] src/pcsc-spy.c, src/pcsc-spy.py: Fix issues caused by
+	  changes of spy_buffer() in the previous commit
+	* [r5947] src/pcsc-spy.c, src/pcsc-spy.py: Log
+	  SCardGetStatusChange() reader array
+	* [r5946] src/pcsc-spy.py: Use a PCSCspy class
+	* [r5945] src/pcsc-spy.py: Make pylint happier
+	* [r5944] src/pcsc-spy.py: Make pep8 happy
+
+2011-09-06  Ludovic Rousseau
+
+	* [r5943] src/pcsc-spy.c, src/pcsc-spy.py: Add support of multi
+	  entries text output
+	  
+	  This is used for SCardListReaders() and SCardListReaderGroups()
+	* [r5942] src/pcsc-spy.c: load_lib(): Do not use an absolut
+	  pathname
+	  
+	  Use "libpcsclite.so.1" instead of "/usr/lib/libpcsclite.so.1" to
+	  let the dynamic linker ld.so search for the lib.
+	* [r5941] src/pcsc-spy.c, src/pcsc-spy.py: Set $Id$ keyword
+
+2011-09-04  Ludovic Rousseau
+
+	* [r5940] configure.in: check for mq_getattr() in -lrt
+	  
+	  In old versions of libudev the -lrt link flags is not added. This
+	  library is required for mq_getattr() used by sd-daemon.c
+	  
+	  On Ubuntu 10.04: $ pkg-config --libs libudev -ludev $ dpkg -l
+	  libudev-dev ii libudev-dev 151-12.3 udev library (development
+	  files)
+	  
+	  On Debian wheery: $ pkg-config --libs libudev -ludev -lrt $ dpkg
+	  -l libudev-dev ii libudev-dev 172-1 libudev development files
+	* [r5939] UnitaryTests/getAttrib.py: Add
+	  SCARD_ATTR_VENDOR_IFD_VERSION and SCARD_ATTR_VENDOR_IFD_SERIAL_NO
+
+2011-09-03  Ludovic Rousseau
+
+	* [r5938] src/hotplug_libusb.c, src/pcscdaemon.c,
+	  src/winscard_clnt.c: Remove extra spaces characters
+	* [r5937] src/pcscdaemon.c: print_usage(): fix typo in argument
+	  documentation
+	  
+	  The correct option is --auto-exit
+	* [r5936] .gitignore: Add new files to .gitignore
+	* [r5935] etc/pcscd.service.in: Use long arguments to pcscd command
+	  
+	  --foreground and --hotplug are easier to understand than -f and
+	  -H
+	* [r5934] configure.in: Add --with-systemdsystemunitdir=DIR comment
+	* [r5933] Makefile.am, configure.in, etc, etc/Makefile.am,
+	  etc/pcscd.service.in, etc/pcscd.socket.in: Install systemd
+	  service files
+	  
+	  Thanks to Kalev Lember for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2011-q2/0139.html
+	* [r5932] src/winscard_clnt.c: Fix compiler warning when autostart
+	  is not used
+	  
+	  winscard_clnt.c: In function `SCardEstablishContext':
+	  winscard_clnt.c:455:1: warning: label `again' defined but not
+	  used [-Wunused-label]
+	* [r5931] configure.in, src/winscard_clnt.c: Add
+	  --disable-autostart option
+	  
+	  This option disables pcscd autostarting code in the libpcsclite
+	  library.
+	  
+	  With systemd socket activation in place, pcscd can be started
+	  automatically by systemd when a request arrives on the IPC
+	  socket. That makes starting the service as a fork from user
+	  library unnecessary.
+	  
+	  Thanks to Kalev Lember for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2011-q2/0137.html
+	* [r5930] src/Makefile.am: Use curl -O instead of a redirection
+	  
+	  This avoids a name duplication (less error-prone)
+	* [r5929] src/Makefile.am, src/pcscdaemon.c, src/sd-daemon.c,
+	  src/sd-daemon.h, src/winscard_msg.h, src/winscard_msg_srv.c:
+	  Support systemd socket activation
+	  
+	  Add systemd socket-based activation support to pcscd as an
+	  alternative to the existing autostart code which used forking
+	  from the user space library. Systemd socket activation makes it
+	  possible to start pcscd on demand by systemd when a request is
+	  sent on the IPC socket.
+	  
+	  The implementation uses the $LISTEN_FDS/$LISTEN_PID env var
+	  parsing code from systemd's sd-daemon.[ch] copy library.
+	  
+	  Thanks to Kalev Lember for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2011-q2/0140.html
+	* [r5928] UnitaryTests/getAttrib.py: Unitary test for
+	  SCardGetAttrib()
+
+2011-09-02  Ludovic Rousseau
+
+	* [r5927] .gitignore: Create .gitignore files
+
+2011-08-28  Ludovic Rousseau
+
+	* [r5919] src/debuglog.c: DebugLogSetLogType(): xterm-256color is
+	  also a color terminal
+	  
+	  xterm-256color is used by the Terminal application on Mac OS X
+	  (Lion)
+
+2011-08-25  Ludovic Rousseau
+
+	* [r5910] src/Makefile.am, src/pcsc-spy.c, src/pcsc-spy.py: PC/SC
+	  function spy layer
+
+2011-08-21  Ludovic Rousseau
+
+	* [r5901] src/debuglog.c: log_xxd_always(): Use a variable-length
+	  array
+	  
+	  The debug message buffer is no more with a fixed size (around 600
+	  bytes of buffer to log) but uses a variable-length array.
+	  
+	  It is now possible to log extended APDU of 64kB.
+	  
+	  The variable-length array feature is available in GCC in C90 mode
+	  and is mandatory in C99 standard.
+	* [r5900] src/readerfactory.c, src/readerfactory.h:
+	  RFSetReaderName(): remove useless parameter slot
+	  
+	  RFSetReaderName() is only called in one place with slot set to 0.
+	  This parameter is then useless and can be removed.
+	* [r5899] src/debuglog.c: Use sizeof instead of a hard coded value
+	* [r5898] src/debug.c: Remove log_xxd() implementation
+	  
+	  debug.c is use to log from the client side (libpcsclite).
+	  log_xxd() is not used in the client library so is just dead code.
+	* [r5896] src/debuglog.c: log_line(): correctly calculate delta
+	  time when no color is used
+	  
+	  The update of last_time was only done in case of colorization
+	  (LogDoColor). So on unsupported consoles the time was wrong.
+
+2011-08-09  Ludovic Rousseau
+
+	* [r5887] src/hotplug_libudev.c: HPReadBundleValues(): use strtol()
+	  instead of the unsafe sscanf()
+	* [r5886] src/hotplug_linux.c: HPEstablishUSBNotifications(): use
+	  atoi() instead of the unsafe sscanf()
+	* [r5885] src/testpcsc.c: Use atoi() instead of the unsafe sscanf()
+
+2011-08-08  Ludovic Rousseau
+
+	* [r5882] UnitaryTests/SCardGetStatusChange2.py: Check the return
+	  value of SCardGetStatusChange() for unknown readers
+	* [r5881] src/winscard_clnt.c: SCardGetStatusChange(): check all
+	  the readers are already known and return SCARD_E_UNKNOWN_READER
+	  if a reader name is not present.
+	  
+	  Windows XP has this behavior.
+
+2011-07-19  Ludovic Rousseau
+
+	* [r5875] src/hotplug_linux.c: Use safer snprintf() instead of
+	  sprintf()
+	  
+	  coverity: Event secure_coding: [VERY RISKY]. Using "sprintf" can
+	  cause a buffer overflow when done incorrectly. Because sprintf()
+	  assumes an arbitrarily long string, callers must be careful not
+	  to overflow the actual space of the destination. Use snprintf()
+	  instead, or correct precision specifiers.
+	* [r5874] src/hotplug_linux.c: Fix compiler warning
+	  
+	  hotplug_linux.c: In function 'HPReadBundleValues':
+	  hotplug_linux.c:188: warning: format '%d' expects type 'int', but
+	  argument 6 has type 'long unsigned int'
+
+2011-07-18  Ludovic Rousseau
+
+	* [r5873] UnitaryTests/SCardGetStatusChange.py: Unitary test for
+	  SCardGetStatusChange()
+
+2011-07-09  Ludovic Rousseau
+
+	* [r5869] src/PCSC/wintypes.h: Define PUCHAR using UCHAR instead of
+	  "unsigned char". Same for PDWORD and PULONG.
+	  
+	  We now have less lines to change to redefine types.
+	* [r5868] src/hotplug_macosx.c: Fix compiler warnings
+	  
+	  hotplug_macosx.c: In function 'HPDriversGetFromDirectory':
+	  hotplug_macosx.c:245: warning: format '%d' expects type 'int',
+	  but argument 7 has type 'CFIndex' hotplug_macosx.c:253: warning:
+	  format '%d' expects type 'int', but argument 7 has type 'CFIndex'
+	* [r5867] src/winscard_msg.c, src/winscard_msg.h:
+	  MessageReceiveTimeout(): change timeOut parameter type to fix a
+	  compiler warning
+	  
+	  winscard_msg.c: In function `MessageReceiveTimeout':
+	  winscard_msg.c:186:13: warning: comparison between signed and
+	  unsigned integer expressions [-Wsign-compare]
+	* [r5866] src/tokenparser.l: Silence compiler warnings
+	  
+	  tokenparser.l: In function `eval_key': tokenparser.l:62:6:
+	  warning: variable `r' set but not used
+	  [-Wunused-but-set-variable]
+	  
+	  tokenparser.l: In function `eval_value': tokenparser.l:92:6:
+	  warning: variable `r' set but not used
+	  [-Wunused-but-set-variable]
+	  
+	  tokenparser.l: In function `bundleParse': tokenparser.l:162:6:
+	  warning: variable `r' set but not used
+	  [-Wunused-but-set-variable]
+	* [r5865] src/tokenparser.l: bundleParse(): fix a compilation error
+	  if NDEBUG is not definef (i.e. DEBUG is ON)
+	* [r5864] src/winscard_svc.c: Fix compiler warnings
+	  
+	  winscard_svc.c: In function `contextsListhContext_seeker':
+	  winscard_svc.c:86:3: warning: format `%X' expects argument of
+	  type `unsigned int', but argument 6 has type `const void *'
+	  [-Wformat] winscard_svc.c:86:3: warning: format `%X' expects
+	  argument of type `unsigned int', but argument 7 has type `const
+	  void *' [-Wformat]
+	  
+	  winscard_svc.c: In function `ContextThread':
+	  winscard_svc.c:296:2: warning: format `%X' expects argument of
+	  type `unsigned int', but argument 7 has type `struct SCONTEXT *'
+	  [-Wformat]
+	  
+	  winscard_svc.c: In function `MSGAddHandle': winscard_svc.c:836:4:
+	  warning: format `%X' expects argument of type `unsigned int', but
+	  argument 6 has type `struct SCONTEXT *' [-Wformat]
+	  
+	  winscard_svc.c: In function `MSGCleanupClient':
+	  winscard_svc.c:916:2: warning: format `%X' expects argument of
+	  type `unsigned int', but argument 7 has type `struct SCONTEXT *'
+	  [-Wformat] winscard_svc.c:924:2: warning: format `%X' expects
+	  argument of type `unsigned int', but argument 6 has type `struct
+	  SCONTEXT *' [-Wformat]
+	* [r5863] src/winscard.c: Fix compiler warnings
+	  
+	  winscard.c: In function `SCardEstablishContext':
+	  winscard.c:193:2: warning: format `%X' expects argument of type
+	  `unsigned int', but argument 6 has type `SCARDCONTEXT' [-Wformat]
+	  
+	  winscard.c: In function `SCardReleaseContext': winscard.c:204:2:
+	  warning: format `%X' expects argument of type `unsigned int', but
+	  argument 6 has type `SCARDCONTEXT' [-Wformat]
+	  
+	  winscard.c: In function `SCardConnect': winscard.c:234:2:
+	  warning: format `%d' expects argument of type `int', but argument
+	  7 has type `DWORD' [-Wformat] winscard.c:315:5: warning: format
+	  `%d' expects argument of type `int', but argument 6 has type
+	  `LONG' [-Wformat] winscard.c:315:5: warning: format `%X' expects
+	  argument of type `unsigned int', but argument 7 has type `LONG'
+	  [-Wformat] winscard.c:410:5: warning: format `%d' expects
+	  argument of type `int', but argument 6 has type `DWORD'
+	  [-Wformat] winscard.c:422:2: warning: format `%x' expects
+	  argument of type `unsigned int', but argument 6 has type
+	  `SCARDHANDLE' [-Wformat]
+	  
+	  winscard.c: In function `SCardReconnect': winscard.c:693:5:
+	  warning: format `%d' expects argument of type `int', but argument
+	  6 has type `DWORD' [-Wformat]
+	  
+	  winscard.c: In function `SCardDisconnect': winscard.c:821:2:
+	  warning: format `%d' expects argument of type `int', but argument
+	  6 has type `DWORD' [-Wformat]
+	  
+	  winscard.c: In function `SCardBeginTransaction':
+	  winscard.c:1051:2: warning: format `%X' expects argument of type
+	  `unsigned int', but argument 6 has type `LONG' [-Wformat]
+	  
+	  winscard.c: In function `SCardEndTransaction': winscard.c:1188:2:
+	  warning: format `%X' expects argument of type `unsigned int', but
+	  argument 6 has type `LONG' [-Wformat]
+	  
+	  winscard.c: In function `SCardTransmit': winscard.c:1539:2:
+	  warning: format `%d' expects argument of type `int', but argument
+	  6 has type `DWORD' [-Wformat]
+	* [r5862] src/readerfactory.c: Fix compiler warnings
+	  
+	  readerfactory.c: In function `RFInitializeReader':
+	  readerfactory.c:941:3: warning: format `%X' expects argument of
+	  type `unsigned int', but argument 6 has type `LONG' [-Wformat]
+	  readerfactory.c:950:3: warning: format `%X' expects argument of
+	  type `unsigned int', but argument 6 has type `LONG' [-Wformat]
+	  readerfactory.c: In function `RFRemoveReaderHandle':
+	  readerfactory.c:1135:3: warning: format `%X' expects argument of
+	  type `unsigned int', but argument 6 has type `SCARDHANDLE'
+	  [-Wformat] readerfactory.c: In function
+	  `RFCheckReaderEventState': readerfactory.c:1198:3: warning:
+	  format `%X' expects argument of type `unsigned int', but argument
+	  6 has type `SCARDHANDLE' [-Wformat] readerfactory.c: In function
+	  `RFCleanupReaders': readerfactory.c:1274:5: warning: format `%X'
+	  expects argument of type `unsigned int', but argument 6 has type
+	  `LONG' [-Wformat]
+	* [r5861] src/prothandler.c: Fix compiler warning
+	  
+	  prothandler.c: In function `PHSetProtocol': prothandler.c:102:5:
+	  warning: format `%d' expects argument of type `int', but argument
+	  6 has type `LONG' [-Wformat]
+	* [r5860] src/ifdwrapper.c: Fix compiler warning
+	  
+	  ifdwrapper.c: In function `IFDControl': ifdwrapper.c:455:3:
+	  warning: format `%LX' expects argument of type `long long
+	  unsigned int', but argument 6 has type `DWORD' [-Wformat]
+	* [r5859] src/eventhandler.c: Fix compiler warning
+	  
+	  eventhandler.c: In function `EHStatusHandlerThread':
+	  eventhandler.c:272:4: warning: format `%d' expects argument of
+	  type `int', but argument 6 has type `LONG' [-Wformat]
+	  eventhandler.c:272:4: warning: format `%X' expects argument of
+	  type `unsigned int', but argument 7 has type `LONG' [-Wformat]
+	* [r5858] src/winscard_clnt.c: Fix compiler warnings
+	  
+	  winscard_clnt.c: In function 'CHANNEL_MAP_seeker':
+	  winscard_clnt.c:282: warning: format '%X' expects type 'unsigned
+	  int', but argument 6 has type 'const void *' winscard_clnt.c:282:
+	  warning: format '%X' expects type 'unsigned int', but argument 7
+	  has type 'const void *' winscard_clnt.c: In function
+	  'SCONTEXTMAP_seeker': winscard_clnt.c:317: warning: format '%X'
+	  expects type 'unsigned int', but argument 6 has type 'const void
+	  *' winscard_clnt.c:317: warning: format '%X' expects type
+	  'unsigned int', but argument 7 has type 'const void *'
+	  winscard_clnt.c: In function 'SCardAddContext':
+	  winscard_clnt.c:3385: warning: format '%X' expects type 'unsigned
+	  int', but argument 6 has type 'struct SCONTEXTMAP *'
+	  winscard_clnt.c:3393: warning: format '%X' expects type 'unsigned
+	  int', but argument 6 has type 'struct SCONTEXTMAP *'
+	* [r5857] src/readerfactory.c: Fix compiler warnings
+	  
+	  readerfactory.c: In function 'RDR_CLIHANDLES_seeker':
+	  readerfactory.c:68: warning: format '%X' expects type 'unsigned
+	  int', but argument 6 has type 'const void *' readerfactory.c:68:
+	  warning: format '%X' expects type 'unsigned int', but argument 7
+	  has type 'const void *'
+	* [r5856] src/readerfactory.c: Fix compiler warnings
+	  
+	  readerfactory.c: In function 'RFAddReader': readerfactory.c:124:
+	  warning: format '%d' expects type 'int', but argument 6 has type
+	  'size_t' readerfactory.c:124: warning: format '%d' expects type
+	  'int', but argument 7 has type 'long unsigned int'
+	* [r5855] src/readerfactory.c: Fix a bug detected thanks to
+	  revision 5854 and a compiler warning
+	  
+	  readerfactory.c: In function 'RFSetReaderEventState':
+	  readerfactory.c:1167: warning: format '%s' expects type 'char *',
+	  but argument 6 has type 'int'
+	* [r5854] src/PCSC/debuglog.h: log_msg(): use
+	  __attribute__((format(printf, ..))) to check the parameters
+	  passed corresponds to the format string
+
+2011-07-08  Ludovic Rousseau
+
+	* [r5853] src/hotplug_libusb.c: HPRegisterForHotplugEvents(): add a
+	  log call for info
+	* [r5852] src/hotplug_libusb.c: HPRescanUsbBus(): check
+	  libusb_init() return value
+	  
+	  Thanks to Dwi Sasongko Supriyadi for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2011-q3/0014.html
+
+2011-07-06  Ludovic Rousseau
+
+	* [r5850] src/debug.c: log_xxd(): use safer snprintf() instead of
+	  sprintf()
+	  
+	  Event secure_coding: [VERY RISKY]. Using "sprintf" can cause a
+	  buffer overflow when done incorrectly. Because sprintf() assumes
+	  an arbitrarily long string, callers must be careful not to
+	  overflow the actual space of the destination. Use snprintf()
+	  instead, or correct precision specifiers.
+	* [r5849] src/debuglog.c: log_xxd_always(): use safer snprintf()
+	  instead of sprintf()
+	  
+	  coverity: Event secure_coding: [VERY RISKY]. Using "sprintf" can
+	  cause a buffer overflow when done incorrectly. Because sprintf()
+	  assumes an arbitrarily long string, callers must be careful not
+	  to overflow the actual space of the destination. Use snprintf()
+	  instead, or correct precision specifiers.
+	* [r5848] src/readerfactory.c: RFAddReader(): use safer snprintf()
+	  instead of sprintf()
+	  
+	  coverity: Event secure_coding: [VERY RISKY]. Using "sprintf" can
+	  cause a buffer overflow when done incorrectly. Because sprintf()
+	  assumes an arbitrarily long string, callers must be careful not
+	  to overflow the actual space of the destination. Use snprintf()
+	  instead, or correct precision specifiers.
+	* [r5847] src/hotplug_libudev.c: HPReadBundleValues(): fix a memory
+	  leak
+	  
+	  coverity: Event leaked_storage: Variable "hpDir" going out of
+	  scope leaks the storage it points to.
+	* [r5846] src/hotplug_libudev.c: HPRescanUsbBus(): Move the
+	  lock/unlock _around_ the loop so that the values are constant
+	  between check and use.
+	  
+	  coverity: Event use: Using an unreliable value of
+	  "readerTracker[i].fullName" inside the second locked section. If
+	  the data that "readerTracker[i].fullName" depends on was changed
+	  by another thread, this use might be incorrect.
+	* [r5845] src/winscard_clnt.c: SCardConnect(): use safer strlcpy()
+	  instead of strncpy()
+	  
+	  coverity: Event buffer_size_warning: Calling strncpy with a
+	  maximum size argument of 100 bytes on destination array
+	  "scConnectStruct.szReader" of size 100 bytes might leave the
+	  destination string unterminated.
+	* [r5844] src/winscard_clnt.c: SCardConnect(): use sizeof instead
+	  of a hardcoded value
+	* [r5843] src/winscard.c: SCardStatus(): remove dead code
+	  
+	  coverity: Event dead_error_condition: On this path, the condition
+	  "rv != 0L" cannot be true.
+	* [r5842] src/winscard_clnt.c: Reformat 4 spaces with 1 tab
+	* [r5841] src/hotplug_libudev.c: Fix a memory leak
+	  
+	  coverity: Event leaked_storage: Variable "CFBundleName" going out
+	  of scope leaks the storage it points to.
+	* [r5840] src/hotplug_libudev.c, src/hotplug_libusb.c: Fix a memory
+	  leak
+	  
+	  coverity: Event leaked_storage: Variable "hpDir" going out of
+	  scope leaks the storage it points to.
+
+2011-07-05  Ludovic Rousseau
+
+	* [r5831] src/testpcsc.c: Fix compiler warnings
+	  
+	  testpcsc.c: In function 'main': testpcsc.c:222: warning:
+	  assignment discards qualifiers from pointer target type
+	  testpcsc.c:225: warning: assignment discards qualifiers from
+	  pointer target type testpcsc.c:228: warning: assignment discards
+	  qualifiers from pointer target type
+	* [r5830] src/testpcsc.c: pioRecvPci really need to be allocated by
+	  the caller since it is filled by SCardTransmit() as a return
+	  parameter.
+	* [r5826] src/readerfactory.c: Fix a REVERSE_INULL coverity error
+	  
+	  sContext->pFeeds is checked for NULL _after_ being dereferenced
+	  in RFUnloadReader() called by RFUnInitializeReader(). We now
+	  check before dereferencing.
+	* [r5825] src/testpcsc.c: Initialize pioRecvPci
+	  
+	  Make coverity scan happy
+	* [r5824] src/testpcsc.c: Use pointers for pioRecvPci and
+	  pioSendPci to better match with the variable names
+
+2011-07-04  Ludovic Rousseau
+
+	* [r5822] src/pcscdaemon.c: print_usage(): update arguments
+	  documentation
+	* [r5821] src/pcscdaemon.c: main(): do not use atexit() since our
+	  at_exit() function will be called upon signal receipt from our
+	  signal_trap() function.
+	  
+	  The problem was that at_exit() was called a second time on the
+	  process exit and gerenarted error messages: 00000006
+	  pcscdaemon.c:634:at_exit() cleaning /var/run/pcscd 00001328
+	  pcscdaemon.c:634:at_exit() cleaning /var/run/pcscd 00000033
+	  pcscdaemon.c:658:clean_temp_files() Cannot remove
+	  /var/run/pcscd/pcscd.comm: No such file or directory 00000013
+	  pcscdaemon.c:663:clean_temp_files() Cannot remove
+	  /var/run/pcscd/pcscd.pid: No such file or directory
+
+2011-07-01  Ludovic Rousseau
+
+	* [r5818] UnitaryTests/SCardReconnect.py: Improve comments
+
+2011-06-29  Ludovic Rousseau
+
+	* [r5814] configure.in: Enable silent build by default
+
+2011-06-28  Ludovic Rousseau
+
+	* [r5813] src/prothandler.c, src/prothandler.h: Remove now unused
+	  PHGetDefaultProtocol() and PHGetAvailableProtocols()
+	* [r5812] src/winscard.c: SCardConnect(), SCardReconnect(): use
+	  ATRDecodeAtr() directly instead of PHGetDefaultProtocol() and
+	  PHGetAvailableProtocols()
+	* [r5811] src/atrhandler.c, src/atrhandler.h, src/prothandler.c:
+	  ATRDecodeAtr(): use only two out parameters availableProtocols
+	  and currentProtocol instead of struct SMARTCARD_EXTENSION
+	  
+	  Remove some unused code from ATRDecodeAtr().
+
+2011-06-23  Ludovic Rousseau
+
+	* [r5809] ChangeLog, configure.in: release 1.7.4
+	* [r5808] src/atrhandler.c: ATRDecodeAtr(): revert revision 5804
+	  
+	  T=1 cards were no more recognized. Brown paper bag bug.
+
+2011-06-22  Ludovic Rousseau
+
+	* [r5806] ChangeLog, configure.in: release 1.7.3
+	* [r5805] src/ifdwrapper.c: IFDSetPTS() and IFDPowerICC(): remove
+	  useless variable ucValue[]
+	  
+	  ifdwrapper.c: In function `IFDSetPTS': ifdwrapper.c:50:8:
+	  warning: variable `ucValue' set but not used
+	  [-Wunused-but-set-variable] ifdwrapper.c: In function
+	  `IFDPowerICC': ifdwrapper.c:252:8: warning: variable `ucValue'
+	  set but not used [-Wunused-but-set-variable]
+	* [r5804] src/atrhandler.c: ATRDecodeAtr(): only use TBi and TCi in
+	  ATR_DEBUG mode
+	  
+	  atrhandler.c: In function `ATRDecodeAtr': atrhandler.c:106:19:
+	  warning: variable `TCi' set but not used
+	  [-Wunused-but-set-variable] atrhandler.c:106:14: warning:
+	  variable `TBi' set but not used [-Wunused-but-set-variable]
+	* [r5803] src/atrhandler.c: Remove unused variable
+	  
+	  atrhandler.c: In function `ATRDecodeAtr': atrhandler.c:48:11:
+	  warning: variable `TCK' set but not used
+	  [-Wunused-but-set-variable]
+	* [r5802] doc/example/pcsc_demo.c: SCARD_PCI_T0 and SCARD_PCI_T1
+	  and now const values
+	  
+	  Fix compiler warnings: pcsc_demo.c: In function `main':
+	  pcsc_demo.c:161:24: warning: assignment discards `const'
+	  qualifier from pointer target type [enabled by default]
+	  pcsc_demo.c:164:24: warning: assignment discards `const'
+	  qualifier from pointer target type [enabled by default]
+
+2011-06-21  Ludovic Rousseau
+
+	* [r5801] src/PCSC/reader.h: Remove the deprecated
+	  FEATURE_MCT_READERDIRECT
+
+2011-06-16  Ludovic Rousseau
+
+	* [r5797] src/winscard_clnt.c: SCardGetStatusChange(): add a cast
+	  to fix a compiler warning
+	  
+	  winscard_clnt.c:1890: warning: comparison between signed and
+	  unsigned integer expressions
+	* [r5796] src/winscard_msg.c, src/winscard_msg.h:
+	  MessageReceiveTimeout(): change timeOut type from int32_t to
+	  unsigned long to avoid overflows with a timeout of 1000000000.
+	  
+	  The bug was that MessageReceiveTimeout() timeouts immediatly when
+	  it should not. So a _lot_ of exchanges with pcscd occurs.
+	  
+	  Tested on 64-bits CPU only.
+	* [r5795] src/winscard_clnt.c: SCardGetStatusChange(): catch
+	  possible sign extension problems from 32 to 64-bits integers
+	  
+	  Storing INFINITE (0xFFFFFFFF) into an int parameter and then
+	  passing it to SCardGetStatusChange() will expand the int into a
+	  DWORD (unsigned long). On 64-bits architecture it will become
+	  0xFFFFFFFFFFFFFFFF (-1).
+	  
+	  See OpenSC bug at
+	  http://www.opensc-project.org/pipermail/opensc-devel/2011-June/016848.html
+
+2011-06-15  Ludovic Rousseau
+
+	* [r5793] src/hotplug_libudev.c: HPEstablishUSBNotifications():
+	  wait for a udev event before calling
+	  udev_monitor_receive_device()
+	  
+	  Fix Alioth bug [#313165] "libudev-support broken with udev-171:
+	  udev_monitor_receive_device() error"
+
+2011-06-14  Ludovic Rousseau
+
+	* [r5790] src/winscard_clnt.c: API_TRACE_IN: use %ld instead of %d
+	  for DWORD and LONG types.
+	  
+	  The timeout in SCardGetStatusChange() is now correctly displayed
+	  4294967295 instead of -1 on 64-bits systems.
+
+2011-06-11  Ludovic Rousseau
+
+	* [r5786] src/hotplug_macosx.c: Remove useless cast for calloc()
+	  (we are not in C++)
+	* [r5780] COPYING: Add my name as copyright holder
+
+2011-05-30  Ludovic Rousseau
+
+	* [r5769] src/eventhandler.c: EHStatusHandlerThread(): always sleep
+	  if the driver card event function returns an error (and not just
+	  in the case of IFD_NO_SUCH_DEVICE)
+	  
+	  This avoids to loop too fast in case of a problem. This happens
+	  after activating a smart card reader in vmware workstation for
+	  example.
+	  
+	  See
+	  https://bugs.launchpad.net/ubuntu/+source/pcsc-lite/+bug/787451
+	  "pcscd spams to syslog and kern.log after enabling smartcard
+	  reader in VMWare Workstation"
+
+2011-05-25  Ludovic Rousseau
+
+	* [r5766] src/winscard.c: SCardConnect(): log at level
+	  PCSC_LOG_DEBUG instead of PCSC_LOG_ERROR if no card is inserted
+	  
+	  Thanks to Kalev Lember for the patch
+	  https://bugzilla.redhat.com/show_bug.cgi?id=707412#c2
+
+2011-05-22  Ludovic Rousseau
+
+	* [r5765] src/winscard_svc.c: WRITE_BODY_WITH_COMMAND(): always log
+	  with level PCSC_LOG_DEBUG even in case of error to avoid filling
+	  the system log file.
+	  
+	  Thanks to Kalev Lember for the patch. See
+	  https://bugzilla.redhat.com/show_bug.cgi?id=657658
+
+2011-05-18  Ludovic Rousseau
+
+	* [r5764] src/pcscdaemon.c: print_usage(): document -x,
+	  --auto-exits
+	* [r5763] configure.in: Use AC_LANG_SOURCE as requested by autoconf
+	  2.68
+
+2011-05-17  Ludovic Rousseau
+
+	* [r5759] doc/doxygen.conf.in: Do not generate call and include
+	  graphs
+
+2011-05-12  Ludovic Rousseau
+
+	* [r5736] src/PCSC/pcsclite.h.in, src/winscard_clnt.c: Define
+	  g_rgSCardT?Pci as const structures to be more Windows like
+	  
+	  I do not expect a regression or compilation problem in WinSCard
+	  API users but how knows...
+	* [r5735] configure.in: No need to define host_to_ccid_16 and
+	  host_to_ccid_32 any more since they were removed in revision 5255
+	  from src/PCSC/reader.h
+	* [r5734] configure.in: Do not check for libusb or libudev is USB
+	  support is disabled.
+	  
+	  See Debian bug #626201: pcsc-lite: FTBFS on hurd-i386
+
+2011-05-11  Ludovic Rousseau
+
+	* [r5732] src/winscard_svc.c: ContextThread(): in
+	  CMD_GET_READERS_STATE call RFWaitForReaderInit only if USE_USB is
+	  defined.
+	  
+	  Fix a link failure if --disable-usb is used.
+	  
+	  See Debian bug #626201: pcsc-lite: FTBFS on hurd-i386
+
+2011-05-05  Ludovic Rousseau
+
+	* [r5714] src/PCSC/debuglog.h, src/PCSC/ifdhandler.h,
+	  src/PCSC/pcsclite.h.in, src/PCSC/wintypes.h: Update copyright
+	  date
+	* [r5713] src/PCSC/debuglog.h, src/debuglog.c, src/pcscdaemon.c:
+	  Add command line option -T, --color: force use of colored logs
+	  
+	  The idea is to have colored logs even if they are redirected to a
+	  file or a pipe.
+	* [r5712] src/debuglog.c: log_line(): display the delta time
+	  between two log lines even if stdout is not a tty (redirected to
+	  a file)
+	  
+	  The information may be usefull to detect problems from a log file
+	  with this time information.
+	* [r5711] src/atrhandler.c, src/debuglog.c, src/eventhandler.c,
+	  src/hotplug_generic.c, src/hotplug_libusb.c, src/hotplug_linux.c,
+	  src/hotplug_macosx.c, src/ifdwrapper.c, src/pcscdaemon.c,
+	  src/prothandler.c, src/readerfactory.c, src/readerfactory.h,
+	  src/utils.c, src/winscard.c, src/winscard_clnt.c,
+	  src/winscard_svc.c: Update copyright date
+	* [r5710] src/PCSC/debuglog.h, src/debuglog.c, src/pcscdaemon.c:
+	  Send logs to stdout instead of stderr
+	  
+	  It is now possible to use tee(1) to redirect logs in a file
+	  without first redirecting stderr to stdout
+	* [r5709] src/pcscdaemon.c: at_exit(): use exit() instead of
+	  _exit() to properly close stderr and stdout and other libC
+	  cleanup
+
+2011-05-04  Ludovic Rousseau
+
+	* [r5708] src/PCSC/debuglog.h, src/debuglog.c: Remove support of
+	  DebugLogSuppress()
+	  
+	  This function is not used anywhere in pcsc-lite.
+
+2011-05-03  Ludovic Rousseau
+
+	* [r5707] src/hotplug_libusb.c: HPRescanUsbBus(): fix a memory leak
+	  
+	  Call libusb_free_config_descriptor() to free the memory allocated
+	  by libusb_get_active_config_descriptor()
+	  
+	  Thanks to Roland Troka for the patch Closes Alioth bug: [313036]
+	  alto uso della ram da pcscd versione 1.6.7 e 1.7.0
+
+2011-04-22  Ludovic Rousseau
+
+	* [r5705] TODO: Fix: "start pcscd only when a reader is connected"
+	  and "do not open the reader USB device if no client is using the
+	  reader"
+	  
+	  Now that pcscd is auto started it will be started only if an
+	  appication is using the PC/SC API. This is the case since release
+	  1.6.0: - SCardEstablishContext(): try to start the pcscd daemon
+	  if not already running. . pcscd will suicide itself after 60
+	  seconds of inactivity if it is started using --auto-exit. This is
+	  the default behavior when pcscd is started by libpcsclite . Set
+	  PCSCLITE_PCSCD_ARGS with the argument you want to pass to pcscd
+	  in autostart Only one argument is passed. The space character is
+	  not a separator. example: export PCSCLITE_PCSCD_ARGS=-dfa
+	* [r5704] TODO: Fix: "start pcscd as an normal user daemon (as id
+	  smartcard?) instead as root"
+	  
+	  This is the case since release 1.6.5: - Install pcscd as sgid
+	  pcscd instead of suid root See
+	  http://ludovicrousseau.blogspot.com/2010/09/pcscd-auto-start.html
+	* [r5703] TODO: Fix: "use static driver instead of reader polling
+	  and dynamic driver loading"
+	  
+	  This is the case since release 1.6.0: - Better handling of
+	  PCSCLITE_STATIC_DRIVER as can be used on platforms using
+	  <B5>Clinux (without dynamic loader). This is used to statically
+	  link the reader driver to pcscd. Since the link is static you
+	  must define the IFDHandler API version at compilation time.
+	  Either define IFDHANDLERv1, IFDHANDLERv2 or IFDHANDLERv3
+
+2011-04-05  Ludovic Rousseau
+
+	* [r5692] src/pcscdaemon.c: signal_trap(): exit immediatly in case
+	  of SIGTERM
+	  
+	  Closes Debian bug #620305 "pcscd slows down sutdown/restart"
+
+2011-03-31  Ludovic Rousseau
+
+	* [r5684] ChangeLog, configure.in: release 1.7.2
+	* [r5683] src/hotplug_libudev.c: HPAddDevice(): avoids a crash if a
+	  specific driver fails to work and no class driver is available
+	  
+	  Fix Debian bug #620232: pcscd fails to work with REINER SCT
+	  cyberJack
+
+2011-03-30  Ludovic Rousseau
+
+	* [r5679] ChangeLog, configure.in: release 1.7.1
+
+2011-03-27  Ludovic Rousseau
+
+	* [r5676] src/hotplug_libudev.c: Log an error if
+	  udev_device_get_devnode() fails
+
+2011-03-26  Ludovic Rousseau
+
+	* [r5675] src/hotplug_libudev.c: Try to use a (CCID) class driver
+	  if a specific driver fails to use the reader.
+	  
+	  This may happen if openct ifd-handler and libccid are both
+	  installed.
+	* [r5674] src/utils.c: CheckForOpenCT(): Log openct control file
+	  found
+	* [r5673] src/hotplug_libudev.c: Check the
+	  udev_device_get_devnode() return value (and avoids a crash)
+	  
+	  Fix Debian bug #619241
+
+2011-03-16  Ludovic Rousseau
+
+	* [r5659] src/winscard_clnt.c: CardControl(): initialize all the
+	  fields of the struct control_struct to avoid valgrind warning:
+	  
+	  ==14600== Syscall param socketcall.sendto(msg) points to
+	  uninitialised byte(s) ==14600== at 0x5042532: send (send.c:28)
+	  ==14600== by 0x4E2FDF9: MessageSend (winscard_msg.c:355)
+	  ==14600== by 0x4E2FEE2: MessageSendWithHeader
+	  (winscard_msg.c:294) ==14600== by 0x4E2C05C: SCardControl
+	  (winscard_clnt.c:2375) ==14600== by 0x4008D4: main
+	  (scontrol.c:49) ==14600== Address 0x7fefffc60 is on thread 1's
+	  stack
+	  
+	  Thanks to Martin Vogt for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2011-q1/0088.html
+
+2011-03-13  Ludovic Rousseau
+
+	* [r5655] configure.in: Use libudev only for Linux by default
+	* [r5653] configure.in: PCSC_ARCH: convert / in _ to have
+	  GNU_kFreeBSD instead of GNU/kFreeBSD
+
+2011-03-09  Ludovic Rousseau
+
+	* [r5650] ChangeLog: Typo caused by autocompletion without check
+	* [r5649] ChangeLog, configure.in: release 1.7.0
+
+2011-02-25  Ludovic Rousseau
+
+	* [r5638] configure.in, src/Makefile.am, src/PCSC/ifdhandler.h,
+	  src/hotplug_generic.c, src/hotplug_libhal.c,
+	  src/hotplug_libudev.c, src/hotplug_linux.c: Use libudev instead
+	  of (deprecated) libhal for the USB hotplug mechanism.
+
+2011-02-24  Ludovic Rousseau
+
+	* [r5636] src/hotplug_libusb.c: Remove debug printf()
+
+2011-02-22  Ludovic Rousseau
+
+	* [r5628] ChangeLog, configure.in: release 1.6.7
+
+2011-02-21  Ludovic Rousseau
+
+	* [r5621] src/hotplug_libusb.c: If a device has more than one CCID
+	  interface the "libhal:" naming scheme (with the interface number
+	  included) is used instead of "libusb:".
+	  
+	  The new mechanism allows to use multi-interfaces devices like the
+	  Gemalto ProxDU also with hotplug_libusb. libhal is deprecated and
+	  may not be available everywhere.
+	  
+	  Thanks to Diego Elio Pettenò for the patch (for Gentoo)
+
+2011-02-10  Ludovic Rousseau
+
+	* [r5589] src/winscard_clnt.c: Move the definition of DO_TRACE,
+	  DO_PROFILE, and DO_CHECK_SAME_PROCESS at the top of the file, and
+	  add documentation.
+
+2011-02-09  Ludovic Rousseau
+
+	* [r5587] src/Makefile.am: Do not create empty directories
+	  .../pcsc/drivers and .../pcsc/services any more. The needed
+	  directory is created by the driver instead.
+
+2011-02-04  Ludovic Rousseau
+
+	* [r5584] UnitaryTests/ThreadSafe.py, UnitaryTests/stress_apdu.py:
+	  Fix PEP8 warnings
+	* [r5583] UnitaryTests/ThreadSafe.py: Display the thread id and
+	  iterations
+	* [r5582] UnitaryTests/SCard_fork.py: Better documentation and
+	  debug
+	* [r5581] src/winscard_clnt.c: Add a missing variable declaration
+	  used if DO_CHECK_SAME_PROCESS is defined
+	* [r5580] UnitaryTests/SCardConnect_DIRECT.py: Test the behavior as
+	  documented in revision 5579
+	* [r5579] src/winscard_clnt.c: Doxygen: CardConnect() &
+	  SCardReconnect() pdwActiveProtocol is not set to
+	  SCARD_PROTOCOL_UNDEFINED if SCARD_SHARE_DIRECT is used but the
+	  card has already negociated its protocol
+
+2011-02-01  Ludovic Rousseau
+
+	* [r5575] UnitaryTests/SCardBeginTransaction_ExclusiceMode.py:
+	  Unitary test for Alioth bug [#312960] SCardDisconnect when other
+	  context has transaction
+	* [r5574] src/winscard.c: SCardDisconnect(): RFUnlockAllSharing()
+	  may fail with SCARD_E_SHARING_VIOLATION if a transaction is on
+	  going on another card context and dwDisposition ==
+	  SCARD_LEAVE_CARD. We should not stop and continue disconnecting
+	  the card.
+	  
+	  Fixes Alioth bug [#312960] SCardDisconnect when other context has
+	  transaction
+	* [r5573] UnitaryTests/SCardConnect_DIRECT2.py: Use the protocol
+	  negociated by SCardConnect() instead of hard coding SCARD_PCI_T1
+	* [r5572] src/winscard_clnt.c: SCardDisconnect(): remove the card
+	  handle only if SCARD_DISCONNECT command succeeded on the server
+	  
+	  Related to alioth bug [#312960] SCardDisconnect when other
+	  context has transaction If a first SCardDisconnect() fails with
+	  SCARD_E_SHARING_VIOLATION it is now possible to try again
+	  SCardDisconnect(). Before the patch the second call to
+	  SCardDisconnect() returned SCARD_E_INVALID_HANDLE but the
+	  connection was still "in use".
+
+2011-01-29  Ludovic Rousseau
+
+	* [r5569] src/PCSC/ifdhandler.h, src/readerfactory.h: Revert
+	  revision 5568 since it has side effect on driver compilation
+	  (like libccid fails to build)
+	* [r5568] src/PCSC/ifdhandler.h, src/readerfactory.h: Move #include
+	  "pcsclite.h" from PCSC/ifdhandler.h to readerfactory.h so that
+	  ifdhandler.h can be used as-is on Mac OS X (for handler_test.c)
+	* [r5567] src/eventhandler.c, src/ifdwrapper.c, src/prothandler.c,
+	  src/readerfactory.c: Remove useless #include "ifdhandler.h"
+
+2011-01-27  Ludovic Rousseau
+
+	* [r5560] src/winscard_clnt.c: SCardSetAttrib(): add profiling
+	  calls
+	* [r5559] src/winscard_clnt.c: SCardGetSetAttrib(): remove a call
+	  to PROFILE_END() since this is already done in SCardGetAttrib()
+	* [r5558] src/winscard_clnt.c: profiling: compare threads using
+	  pthread_equal() instead of == to make the code more portable.
+	* [r5557] src/winscard_clnt.c: SCardGetAttrib(): Always exit from
+	  the same point so that profiling does work even in case of error
+	* [r5556] src/winscard_clnt.c: profile_end(): add a missing \n in
+	  the warning message
+	* [r5555] src/winscard_clnt.c: Send API traces do stderr instead of
+	  stdout
+
+2011-01-25  Ludovic Rousseau
+
+	* [r5550] src/winscard_clnt.c: SCardReleaseContext(): Always exit
+	  from the same point so that profiling does work even in case of
+	  error
+	* [r5549] src/winscard_clnt.c: SCardCancel(): Always exit from the
+	  same point so that profiling does work even in case of error
+	* [r5548] src/winscard_clnt.c: Profiling: allow to support up to
+	  MAX_THREADS simultaneous calls
+	  
+	  For example SCardCancel() is called from another thread when
+	  SCardGetStatusChange() is running. This was not supported.
+	* [r5547] src/winscard_clnt.c: Use color names macros
+	* [r5546] src/winscard_clnt.c: Add API tracing with arguments
+	  display
+	* [r5545] src/winscard_clnt.c: SCardGetStatusChange(): Always exit
+	  from the same point so that profiling does work even in case of
+	  error
+	* [r5544] src/winscard_clnt.c: SCardDisconnect(): Always exit from
+	  the same point so that profiling does work even in case of error
+
+2011-01-21  Ludovic Rousseau
+
+	* [r5543] src/configfile.l: Display the correct line number if
+	  garbage is found in the configuration file
+
+2011-01-20  Ludovic Rousseau
+
+	* [r5539] src/winscard_svc.c: contextsListhContext_seeker(): avoid
+	  a potential crash if NULL values are used
+	  
+	  src/winscard_svc.c:90:22: warning: Dereference of null pointer if
+	  (currentContext->hContext == *(int32_t *)key) ^
+	  src/winscard_svc.c:90:34: warning: Dereference of null pointer if
+	  (currentContext->hContext == *(int32_t *)key) ^
+	* [r5538] src/winscard_clnt.c: SCardStatus(): initialize a dummy
+	  variable to avoid warnings
+	  
+	  src/winscard_clnt.c:1451:2: warning: Assigned value is garbage or
+	  undefined dwReaderLen = *pcchReaderLen; ^ ~~~~~~~~~~~~~~
+	  src/winscard_clnt.c:1452:2: warning: Assigned value is garbage or
+	  undefined dwAtrLen = *pcbAtrLen; ^ ~~~~~~~~~~
+	* [r5537] src/winscard_clnt.c: Avoid a potential crash if NULL
+	  values are used
+	  
+	  src/winscard_clnt.c:226:27: warning: Dereference of null pointer
+	  if (channelMap->hCard == *(SCARDHANDLE *)key) ^
+	  src/winscard_clnt.c:226:18: warning: Dereference of null pointer
+	  if (channelMap->hCard == *(SCARDHANDLE *)key) ^
+	  src/winscard_clnt.c:260:18: warning: Dereference of null pointer
+	  if (contextMap->hContext == *(SCARDCONTEXT *) key) ^
+	  src/winscard_clnt.c:260:30: warning: Dereference of null pointer
+	  if (contextMap->hContext == *(SCARDCONTEXT *) key) ^
+	* [r5536] src/winscard_clnt.c: SCardEstablishContext(): remove
+	  useless affectation
+	  
+	  src/winscard_clnt.c:439:5: warning: Value stored to 'ret' is
+	  never read ...ret = execl(PCSCD_BINARY, "pcscd", "--auto-exit",
+	  param, ^ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	* [r5535] src/winscard_clnt.c: SCardEndTransaction(): remove
+	  useless code
+	  
+	  src/winscard_clnt.c:1269:2: warning: Value stored to 'randnum' is
+	  never read randnum = 0; ^
+	* [r5534] src/winscard.c: remove unused affectations
+	  
+	  src/winscard.c:565:4: warning: Value stored to 'rv' is never read
+	  rv = IFDPowerICC(rContext, IFD_POWER_DOWN, NULL, NULL); ^
+	  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	  src/winscard.c:835:4: warning: Value stored to 'rv' is never read
+	  rv = IFDPowerICC(rContext, IFD_POWER_DOWN, NULL, NULL); ^
+	  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	  src/winscard.c:1095:4: warning: Value stored to 'rv' is never
+	  read rv = IFDPowerICC(rContext, IFD_POWER_DOWN, NULL, NULL); ^
+	  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	* [r5533] clang-analyze.sh: Do not analyze tokenparser.c since it
+	  is generated by flex
+	* [r5532] src/readerfactory.c: RDR_CLIHANDLES_seeker(): avoid a
+	  potential crash if NULL values are used
+	  
+	  src/readerfactory.c:72:30: warning: Dereference of null pointer
+	  if (rdrCliHandles->hCard == *(SCARDHANDLE *)key) ^
+	  src/readerfactory.c:72:21: warning: Dereference of null pointer
+	  if (rdrCliHandles->hCard == *(SCARDHANDLE *)key) ^
+	* [r5531] src/readerfactory.c: RFAddReader(): remove unused
+	  affectation
+	  
+	  src/readerfactory.c:344:4: warning: Value stored to 'rv' is never
+	  read rv = RFRemoveReader(readerName, port); ^
+	  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	* [r5530] src/readerfactory.c: RFAddReaderHandle(): return the
+	  error code if any
+	  
+	  src/readerfactory.c:1116:3: warning: Value stored to 'rv' is
+	  never read rv = SCARD_E_NO_MEMORY; ^ ~~~~~~~~~~~~~~~~~
+	  src/readerfactory.c:1103:3: warning: Value stored to 'rv' is
+	  never read rv = SCARD_E_NO_MEMORY; ^ ~~~~~~~~~~~~~~~~~
+	  src/readerfactory.c:1095:3: warning: Value stored to 'rv' is
+	  never read rv = SCARD_E_NO_MEMORY; ^ ~~~~~~~~~~~~~~~~~
+
+2011-01-18  Ludovic Rousseau
+
+	* [r5525] src/pcscdaemon.c: Remove useless code
+	  
+	  src/pcscdaemon.c:85:2: warning: Value stored to 'rv' is never
+	  read rv = 0; ^ ~ src/pcscdaemon.c:175:2: warning: Value stored to
+	  'rv' is never read rv = 0; ^ ~
+	* [r5524] src/ifdwrapper.c: IFDPowerICC(): remove useless code
+	  
+	  src/ifdwrapper.c:294:2: warning: Value stored to 'ret' is never
+	  read ret = ATRDecodeAtr(&sSmartCard, pucAtr, *pdwAtrLen); ^
+	  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	  src/ifdwrapper.c:268:2: warning: Value stored to 'rv' is never
+	  read rv = IFD_SUCCESS; ^ ~~~~~~~~~~~
+	* [r5523] src/eventhandler.c: EHStatusHandlerThread(): check the
+	  return value of IFDStatusICC()
+	  
+	  Thanks to clang(1) for the warning src/eventhandler.c:235:2:
+	  warning: Value stored to 'rv' is never read rv =
+	  IFDStatusICC(rContext, &dwStatus); ^
+	  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	* [r5522] src/eventhandler.c: EHStatusHandlerThread(): remove
+	  unused code
+	  
+	  src/eventhandler.c:233:2: warning: Value stored to
+	  'dwCurrentState' is never read dwCurrentState = 0; ^ ~
+	  src/eventhandler.c:232:2: warning: Value stored to
+	  'readerSharing' is never read readerSharing = 0; ^ ~
+	* [r5521] src/atrhandler.c: ATRDecodeAtr(): remove unused code
+	  
+	  src/atrhandler.c:55:2: warning: Value stored to 'p' is never read
+	  p = K = TCK = Y1i = T = 0; ^ ~~~~~~~~~~~~~~~~~~~~~
+	  src/atrhandler.c:55:6: warning: Although the value stored to 'K'
+	  is used in the enclosing expression, the value is never actually
+	  read from 'K' p = K = TCK = Y1i = T = 0; ^ ~~~~~~~~~~~~~~~~~
+	  src/atrhandler.c:55:10: warning: Although the value stored to
+	  'TCK' is used in the enclosing expression, the value is never
+	  actually read from 'TCK' p = K = TCK = Y1i = T = 0; ^ ~~~~~~~~~~~
+	  src/atrhandler.c:55:16: warning: Although the value stored to
+	  'Y1i' is used in the enclosing expression, the value is never
+	  actually read from 'Y1i' p = K = TCK = Y1i = T = 0; ^ ~~~~~
+	  src/atrhandler.c:55:22: warning: Although the value stored to 'T'
+	  is used in the enclosing expression, the value is never actually
+	  read from 'T' p = K = TCK = Y1i = T = 0; ^ ~
+	* [r5520] clang-analyze.sh: script to call clang --analyze
+	* [r5519] splint.sh: No more scf files since revision 4486
+	* [r5518] src/winscard_clnt.c: SCardGetStatusChange(): avoids a
+	  compiler warning
+	  
+	  winscard_clnt.c:1875:33: warning: comparison of integers of
+	  different signs: 'uint32_t' (aka 'unsigned int') and 'int'
+	  [-Wsign-compare] ...if (rContext->eventCounter != currentCounter)
+	  ~~~~~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~~~~~
+	* [r5517] src/readerfactory.c: Add an explicit cast to avoid a
+	  compiler warning
+	  
+	  readerfactory.c:1033:45: warning: comparison of integers of
+	  different signs: 'unsigned long' and 'SCARDHANDLE' (aka 'long')
+	  [-Wsign-compare] if ((rContext->dwIdentity + randHandle) ==
+	  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ^
+
+2011-01-14  Ludovic Rousseau
+
+	* [r5509]
+	  UnitaryTests/SCardGetStatusChange/SCardGetStatusChange_PnP.py:
+	  Also initialize the state of the PnP special reader (For Mac OS
+	  X)
+	* [r5508] src/hotplug_macosx.c: HPSearchHotPluggables(): use the
+	  same naming convention as used by Apple PC/SC layer on Leopard
+	  (and later). The reader friendly name is used instead of
+	  "usb:%04x/%04x" as documented in IFDHandler v3 API at
+	  http://pcsclite.alioth.debian.org/api/group__IFDHandler.html#gabb9fe35a68fa080ce9397f0b830b1e7e
+	  
+	  The same driver source code can be used by Apple PC/SC layer and
+	  by this pcsc-lite.
+	* [r5507] src/hotplug_macosx.c: Fix compiler warning
+	  
+	  hotplug_macosx.c: In function ‘HPDriversGetFromDirectory’:
+	  hotplug_macosx.c:150: warning: comparison between signed and
+	  unsigned
+	* [r5506] c.sh: Remove commented CFLAGS definition
+	* [r5505] src/PCSC/pcsclite.h.in, src/PCSC/wintypes.h: Mac OS X
+	  "port" - Define Windows types as they are defined on Mac OS X in
+	  /System/Library/Frameworks/PCSC.framework/Headers/wintypes.h -
+	  Pack structures as they are packed on Mac OS X in
+	  /System/Library/Frameworks/PCSC.framework/Headers/pcsclite.h
+	  
+	  With these changes it is possible to build this pcsc-lite on Mac
+	  OS X and use it with an application built using the PCSC
+	  Framework headers provided by Apple.
+	  
+	  One application is to temporarily replace the Apple PCSC layer by
+	  a better/working one.
+	* [r5504] src/PCSC/pcsclite.h.in: Use LONG instead of long for
+	  SCARDCONTEXT and SCARDHANDLE so that the exact type can be easily
+	  changed by editing PCSC/wintypes.h
+	  
+	  By default: typedef long LONG; so no change
+
+2011-01-13  Ludovic Rousseau
+
+	* [r5501] doc/pcscd.8.in: Remove references to a init.d/pcscd
+	  script since pcscd is autostarted by default now.
+	* [r5500] doc/reader.conf.5.in: Use @confdir_exp@ instead of
+	  (removed) @confdir@
+
+2011-01-12  Ludovic Rousseau
+
+	* [r5498] doc/pcscd.8.in: Use @confdir_exp@ instead of
+	  @sysconfdir_exp@
+	  
+	  Closes [#312929] @sysconfdir_exp@ not expanded in manual page
+
+2011-01-07  Ludovic Rousseau
+
+	* [r5496] src/readerfactory.c: RFAddReader(): correctly initialize
+	  the pthCardEvent field for the other slots. The bug occured with
+	  a multi slot reader and a driver with no
+	  TAG_IFD_POLLING_THREAD_WITH_TIMEOUT function (as is the case with
+	  my CCID driver since revision 5495)
+
+2011-01-06  Ludovic Rousseau
+
+	* [r5491] UnitaryTests/SCardConnect_DIRECT2.py: Add comments
+	* [r5490] src/winscard.c: SCardDisconnect(): Switch to
+	  POWER_STATE_GRACE_PERIOD unless the card was not powered
+	  
+	  In the previous implementation the state was changed to
+	  POWER_STATE_GRACE_PERIOD only if the previous state was
+	  POWER_STATE_INUSE. So if a SCARD_SHARE_DIRECT connection was used
+	  the card state was not set POWER_STATE_INUSE and a power off
+	  action was immediate at the SCardDisconnect(). Not nice if the
+	  card is reused just after.
+
+2011-01-04  Ludovic Rousseau
+
+	* [r5478] src/winscard_svc.c: ContextThread(): in command
+	  CMD_GET_READERS_STATE, wait until all the readers are ready (ATR
+	  available) before sending the reader states.
+	  
+	  The problem arrives when you connect two readers at the same time
+	  (and one of them is slow to get the ATR). SCardGetStatusChange()
+	  must not exit with one reader in state READER_NOT_INITIALIZED (as
+	  implemented in revision 5217)
+
+2010-12-12  Ludovic Rousseau
+
+	* [r5442] ChangeLog, configure.in: release 1.6.6
+	* [r5441] src/simclist.c: Reapply change in revision 4986 since the
+	  problem was not corrected in version 1.5 of simclist.
+
+2010-12-11  Ludovic Rousseau
+
+	* [r5440] src/winscard_msg.c: Use LONG instead of int to store
+	  PC/SC return codes like SCARD_E_*
+	  
+	  The problem comes from sign extenstion from int to LONG int rv =
+	  SCARD_E_TIMEOUT; /* 0x8010000A */ is (sign) extended into a LONG
+	  = 0xFFFFFFFF8010000A
+	  
+	  So the line in winscard_clnt.c if (SCARD_E_TIMEOUT == rv) is
+	  never true on a 64-bits system because rv has been extended from
+	  int to LONG. The comparison is then between 0x8010000A and
+	  0xFFFFFFFF8010000A
+
+2010-12-08  Ludovic Rousseau
+
+	* [r5434] src/PCSC/debuglog.h, src/PCSC/ifdhandler.h,
+	  src/atrhandler.h, src/dyn_generic.h, src/eventhandler.h,
+	  src/hotplug.h, src/ifdwrapper.h, src/misc.h, src/parser.h,
+	  src/powermgt_generic.h, src/prothandler.h, src/readerfactory.h,
+	  src/sys_generic.h, src/winscard_msg.h, src/winscard_svc.h: Do not
+	  use extern "C" since we are in C and not C++
+	  
+	  Follow rule 13 of "On C Library Implementation" by Rusty Russell
+	  http://rusty.ozlabs.org/?p=140
+
+2010-12-03  Ludovic Rousseau
+
+	* [r5429] src/configfile.l: Fix configfile.l: In function
+	  'evaluatetoken': configfile.l:205: warning: assignment discards
+	  qualifiers from pointer target type
+	* [r5427] ChangeLog, configure.in: release 1.6.5
+
+2010-11-26  Ludovic Rousseau
+
+	* [r5420] src/simclist.c: From SimCList version 1.5
+	  http://mij.oltrelinux.com/devel/simclist/
+
+2010-11-23  Ludovic Rousseau
+
+	* [r5415] src/eventhandler.c, src/readerfactory.c,
+	  src/readerfactory.h, src/winscard.c: Add a mutex to make the test
+	  and set of the powerState field atomic.
+
+2010-11-22  Ludovic Rousseau
+
+	* [r5414] src/eventhandler.c, src/winscard.c: Log the new
+	  powerState value at DEBUG level
+	* [r5412] src/readerfactory.c: Remove dead code
+
+2010-11-16  Ludovic Rousseau
+
+	* [r5402] src/winscard.c: SCardDisconnect(): change powerState to
+	  POWER_STATE_GRACE_PERIOD only if the previous state was
+	  POWER_STATE_INUSE
+	  
+	  If the powerState was POWER_STATE_UNPOWERED then do NOT change to
+	  POWER_STATE_GRACE_PERIOD. POWER_STATE_GRACE_PERIOD indicates that
+	  the card is powered on. That is the case if mode is
+	  SCARD_SHARE_DIRECT at SCardConnect()
+	* [r5401] src/winscard.c: SCardConnect(): change the power state to
+	  POWER_STATE_INUSE only if the card has been powered on. The card
+	  is NOT powered on if mode is SCARD_SHARE_DIRECT
+	* [r5400] src/eventhandler.c, src/readerfactory.c: Move the zeroing
+	  of the reader context from EHDestroyEventHandler() to
+	  RFUnInitializeReader() where it is more appropriate.
+	  
+	  The reader context shall be valid until the reader is
+	  uninitialized in RFUnInitializeReader() and most importantly
+	  after IFDCloseIFD() is called.
+	* [r5399] src/readerfactory.c: RFInitializeReader(): if
+	  IFDOpenIFD() fails just mark the reader as "not correctly
+	  started". This will present a call to IFDCloseIFD() in
+	  RFUnInitializeReader() (revision 5393)
+
+2010-11-09  Ludovic Rousseau
+
+	* [r5393] src/readerfactory.c: RFUnInitializeReader(): Do not close
+	  a reader if IFDOpenIFD() failed in RFInitializeReader()
+	* [r5392] src/readerfactory.c: RFRemoveReader(): destroy the event
+	  handler only if it exists already
+
+2010-11-08  Ludovic Rousseau
+
+	* [r5391] src/winscard_msg_srv.c: ProcessCommonChannelRequest(): no
+	  need to define serv_adr as static. Free a few bytes of memory.
+	* [r5390] src/winscard_msg.c, src/winscard_msg.h,
+	  src/winscard_msg_srv.c: Remove CleanupSharedSegment() and do not
+	  call it anymore
+	  
+	  The function is not about shared segment any more The file
+	  PCSCLITE_CSOCK_NAME will be removed in clean_temp_files() at exit
+	  anyway
+	* [r5388] src/winscard_msg.c: MessageSend(): return
+	  SCARD_E_NO_SERVICE instead of SCARD_F_COMM_ERROR if the daemon
+	  died and we reveice a EPIPE error.
+	* [r5387] src/winscard_msg.c: MessageSendWithHeader(): do not send
+	  a 0 length buffer.
+	  
+	  Some commands only have a header and no data like
+	  CMD_GET_READERS_STATE
+	* [r5386] src/winscard_clnt.c, src/winscard_msg.c,
+	  src/winscard_msg.h, src/winscard_svc.c: MessageReceiveTimeout(),
+	  MessageSendWithHeader(), MessageSend() and MessageReceive() now
+	  returns a PC/SC error code instead of an internal value. So the
+	  callers can just return the error code to the application with no
+	  transcoding.
+	* [r5385] src/winscard_clnt.c: Move SCardInvalidateHandles() in the
+	  same #ifdef DO_CHECK_SAME_PROCESS as SCardCheckSameProcess()
+	  since it is only used in this case.
+	* [r5384] src/winscard_clnt.c: No need to check the server pid
+	  anymore. If the server is restarted the socket communication will
+	  fail and an "RPC transport error" SCARD_F_COMM_ERROR error will
+	  be returned
+	  
+	  This check was needed when the readers state was stored in
+	  /var/run/pcscd/pcscd.pub. But that is no more the case. Every
+	  command now uses the client/server Unix socket.
+
+2010-11-05  Ludovic Rousseau
+
+	* [r5379] src/winscard_msg.h: InitializeSocket() and
+	  ProcessEventsServer() are used by the server side so must be
+	  declared in the #ifdef PCSCD part of the header file
+	* [r5378] src/winscard_msg.h: Add missing getSocketName()
+	  declaration used by winscard_clnt.c and winscard_msg.c
+	* [r5377] src/winscard_msg.h: Reorder the function definitions as
+	  they are in winscard_msg.c in revision 5371
+	* [r5376] src/readerfactory.h: Remove definition of FctMap_V1 now
+	  useless since revision 5321
+	* [r5375] src/atrhandler.c, src/atrhandler.h: Remove typedef of
+	  PSMARTCARD_EXTENSION and use SMARTCARD_EXTENSION * instead
+
+2010-11-04  Ludovic Rousseau
+
+	* [r5373] src/winscard_clnt.c, src/winscard_msg.c: It is now
+	  possible to configure the local socket name to use using the
+	  environment variable PCSCLITE_CSOCK_NAME
+	  
+	  This is used by Estobuntu LTSP to redirect the smart card reader
+	  on the light terminal display to the application running on the
+	  server. They use a patched SSH version to redirect
+	  /var/run/pcscd/pcscd.comm on the client to ~/.pcscd.comm on the
+	  server.
+	* [r5372] src/winscard_msg.c: MessageReceiveTimeout(): remove pcscd
+	  specific code inside a function used only by libpcsclite
+	* [r5371] src/winscard_msg.c: reorganize the functions in 3
+	  categories: - functions used by pcscd only:
+	  CleanupSharedSegment() - functions used by libpcsclite only:
+	  ClientSetupSession(), ClientCloseSession(),
+	  MessageReceiveTimeout(), MessageSendWithHeader() - functions used
+	  by pcscd and libpcsclite: MessageSend(), MessageReceive()
+	  
+	  We gain on the code size: 1104 bytes for pcscd and 101 bytes for
+	  libpcsclite
+
+2010-11-03  Ludovic Rousseau
+
+	* [r5370] src/atrhandler.c: ATRDecodeAtr(): avoids a buffer
+	  overflow with badly formed ATR like 3B FF 11 22 33 F0 11 22 33 F0
+	  11 22 33 F0 11 22 33 F0 11 22 33 F0 11 22 33 F0 11 22 33 00 11 22
+	  33
+	  
+	  Thanks to Rafael Dominguez Vega for the bug report
+
+2010-10-28  Ludovic Rousseau
+
+	* [r5368] src/winscard.c: Move declaration of dwAtrLen closer to
+	  where it is used.
+	* [r5367] src/winscard.c: SCardConnect(): log the ATR in case of
+	  auto power on
+	  
+	  The ATR may be different from the previous one if the card has a
+	  cold and a warm ATR.
+
+2010-10-26  Ludovic Rousseau
+
+	* [r5364] src/winscard.c: SCardDisconnect(): check for card removal
+	  in case DISABLE_AUTO_POWER_ON
+	* [r5359] src/winscard.c: Doxygen documentation is done on the
+	  client side (winscard_clnt.c) so remove documentation of
+	  SCardEstablishContext()
+	* [r5358] src/winscard.c: SCardTransmit(): do not check for NULL
+	  pointers since we are called from ContextThread() with correct
+	  values
+	* [r5357] src/winscard.c: SCardReconnect(): do not check for
+	  pdwActiveProtocol NULL pointer since we are called from
+	  ContextThread() with a correct value
+	* [r5356] src/winscard.c: SCardConnect(): do not check for NULL
+	  pointers since we are called from ContextThread() with correct
+	  values
+	* [r5355] src/winscard.c: SCardEstablishContext(): do not check for
+	  phContext NULL pointer since we are called from ContextThread()
+	  with a correct value
+
+2010-10-25  Ludovic Rousseau
+
+	* [r5354] src/winscard.c: SCardConnect(): test for not
+	  SCARD_POWERED instead of SCARD_SWALLOWED
+	* [r5351] src/hotplug_linux.c: Use the new bundle parser code
+	* [r5350] src/winscard.c: SCardConnect(): log an error if auto
+	  power on failed
+	* [r5349] Makefile.am: Add a fix-rights rule at the top level to
+	  call the fix-rights rule in src/
+
+2010-10-23  Ludovic Rousseau
+
+	* [r5348] src/winscard.c: SCardConnect(): check the returned value
+	  of IFDPowerICC() to change the readerState if power up succeeded
+	* [r5347] src/winscard.c: SCardConnect(): power up the card before
+	  checking for its SCARD_SWALLOWED state.
+	  
+	  If a card fails to power up on card insertion a new power up will
+	  be tried on SCardConnect().
+
+2010-10-22  Ludovic Rousseau
+
+	* [r5346] src/winscard_clnt.c: Remove the "This function " in the
+	  Doxygen brief line
+	* [r5345] UnitaryTests/SCardCancel2.py: SCardCancel() should do
+	  nothing if no cancellable call is ongoing bug fixed in revision
+	  5344
+	* [r5344] src/winscard_clnt.c: Only SCardGetStatusChange() can be
+	  cancelled using SCardCancel()
+	  
+	  Thanks to Jan Rochat for the bug report
+	  https://bugs.launchpad.net/ubuntu/+source/pcsc-lite/+bug/647545
+	* [r5343] src/eventhandler.c, src/eventhandler.h,
+	  src/hotplug_libhal.c, src/hotplug_macosx.c, src/ifdwrapper.c,
+	  src/misc.h, src/pcscdaemon.c, src/winscard.c,
+	  src/winscard_clnt.c, src/winscard_msg.c: Remove spaces and tabs
+	  at end of line
+	* [r5342] src/winscard_svc.c: Reformat
+	* [r5341] src/PCSC/winscard.h, src/winscard.c, src/winscard_clnt.c,
+	  src/winscard_msg.h, src/winscard_svc.c: SCardCancelTransaction()
+	  is no more provided. This function is not provided by Microsoft
+	  and is deprecated since 2005 in pcsc-lite.
+	* [r5340] src/winscard.c: Reindent
+	* [r5339] src/winscard_clnt.c: Reformat
+	* [r5338] src/PCSC/winscard.h, src/winscard_clnt.c:
+	  SCardSetTimeout() is no more provided. This function is not
+	  provided by Microsoft and is deprecated since 2004 in pcsc-lite.
+	* [r5337] src/winscard.c: SCardSetTimeout() is implemented (and
+	  deprecated) on the client side
+	* [r5336] src/winscard.c: SCardListReaders() and SCardCancel() are
+	  implemented on the client side
+	* [r5335] src/winscard.c: SCardDisconnect(): if
+	  DISABLE_AUTO_POWER_ON is defined then do not power on the card if
+	  SCARD_UNPOWER_CARD is used.
+	* [r5334] src/eventhandler.c, src/pcscd.h.in: Move
+	  DISABLE_ON_DEMAND_POWER_ON and DISABLE_AUTO_POWER_ON defines from
+	  eventhandler.c to pcscd.h.in so they are visible by all the .c
+	  files
+	* [r5333] src/winscard.c: SCardConnect(): remove debug log
+
+2010-10-21  Ludovic Rousseau
+
+	* [r5332] src/eventhandler.c: If DISABLE_AUTO_POWER_ON is defined
+	  then do not automatically power on the card. The card will be
+	  powered on on the first SCardConnect()
+	* [r5331] src/readerfactory.c: Remove extra parenthesis We are
+	  using C not Lisp :-)
+	* [r5328] TODO, src/PCSC/ifdhandler.h, src/eventhandler.c,
+	  src/eventhandler.h, src/pcscd.h.in, src/readerfactory.c,
+	  src/readerfactory.h, src/winscard.c: Power on the card _only_ if
+	  an application requests a connection see Alioth bug #301965
+	  
+	  You can disable the feature using DISABLE_ON_DEMAND_POWER_ON in
+	  src/eventhandler.c
+
+2010-10-17  Ludovic Rousseau
+
+	* [r5324] src/Makefile.am: PCSC/reader.h is no more generated from
+	  PCSC/reader.h.in Directly use the filename in
+	  nobase_include_HEADERS
+
+2010-10-15  Ludovic Rousseau
+
+	* [r5323] UnitaryTests/SCardStatus.py: Add a call to
+	  SCardDisconnect() before SCardReleaseContext()
+	* [r5322] src/eventhandler.h, src/winscard.c, src/winscard_clnt.c:
+	  Rename the sharing states unsing the PCSCLITE_SHARING_ prefix
+	  Doxygen: document the READER_STATE structure
+	* [r5321] src/PCSC/ifdhandler.h, src/eventhandler.c,
+	  src/ifdwrapper.c, src/ifdwrapper.h, src/readerfactory.c,
+	  src/readerfactory.h: Remove the support of IFDHandler v1 API. I
+	  don't know any driver using this API.
+	  
+	  We can now simplify the API of IFDStatusICC() and remove the ATR
+	  related parameters. These paremeters were only used by the
+	  IFDHandler v1 API.
+	  
+	  diffstat says: 6 files changed, 51 insertions(+), 335
+	  deletions(-)
+
+2010-10-14  Ludovic Rousseau
+
+	* [r5317] src/hotplug_libhal.c: ifdCapabilities driver feature is
+	  not used with libhal (and has never been). Remove dead/unused
+	  code.
+
+2010-10-13  Ludovic Rousseau
+
+	* [r5316] src/winscard.c: Reformat
+	* [r5315] src/readerfactory.c, src/winscard.c: Use the simpler form
+	  of IFDPowerICC(..., IFD_POWER_DOWN, ...) introduced in revision
+	  5314
+	* [r5314] src/ifdwrapper.c: IFDPowerICC(): allow to use NULL for
+	  pucAtr and pdwAtrLen to make power down easy with
+	  IFDPowerICC(rContext, IFD_POWER_DOWN, NULL, NULL);
+	* [r5313] src/winscard.c: Correctly set dwAtrLen to the sizeof the
+	  ATR array before calling IFDPowerICC().
+	  
+	  Some drivers do not write more that dwAtrLen bytes in cardAtr
+	  array.
+
+2010-10-12  Ludovic Rousseau
+
+	* [r5308] src/winscard_msg.h: Doxygen: SCARD_GET_STATUS_CHANGE is
+	  not used anymore
+	* [r5307] src/winscard.c: Remove SCardStatus() (dead code) on the
+	  server side.
+	* [r5306] src/winscard.c: SCardEndTransaction(): use the same code
+	  to reset a card as in revision 5301
+	* [r5305] src/winscard.c: SCardReconnect(), SCardDisconnect() and
+	  SCardEndTransaction(): reset the value of dwAtrLen before the
+	  second call to IFDPowerICC() so that the driver gets a correct
+	  value if the first call to IFDPowerICC(IFD_POWER_DOWN) set
+	  dwAtrLen=0
+	  
+	  Thanks to Frank Morgner for the bug report Closes: [#312754]
+	  IFDHPowerICC is called with IFD_POWER_UP and *AtrLength==0
+	* [r5304] src/pcsc-wirecheck-gen.c, src/winscard.c,
+	  src/winscard_clnt.c, src/winscard_msg.h, src/winscard_svc.c: A
+	  large part of SCardStatus() is done on the client side using
+	  readerStates[]. So remove a few lines of dead code on the server
+	  side.
+	* [r5303] UnitaryTests/SCardStatus.py: Call SCardStatus() a second
+	  time after a keypress
+	* [r5302] UnitaryTests/SCardStatus.py: Unit test for SCardStatus()
+	* [r5301] src/winscard.c: SCardReconnect(): Reorganize the code to
+	  manage ATR and readerState after a power up. Remove a call to
+	  IFDStatusICC() to know if a card is present or not since
+	  IFDPowerICC() already gives us this information.
+	  
+	  SCardDisconnect(): Use the same code as above
+	* [r5300] src/eventhandler.c, src/winscard.c, src/winscard_clnt.c:
+	  Use uint32_t readerState instead of DWORD dwStatus to store the
+	  state of the reader. DWORD and uint32_t may be different.
+	* [r5299] src/winscard.c: SCardReconnect(): return
+	  SCARD_E_NO_SMARTCARD when card is removed and
+	  SCARD_W_UNRESPONSIVE_CARD when card is unresponsive instead of
+	  SCARD_E_PROTO_MISMATCH
+	* [r5298] src/winscard_msg.h: Increment minor version because of
+	  changes in revision 5290
+	* [r5297] doc/Makefile.am, doc/ifdhandler-3.tex: Remove the
+	  deprecated LaTeX version of IFDHandler documentation
+
+2010-10-11  Ludovic Rousseau
+
+	* [r5296] src/configfile.l: evaluatetoken(): the CHANNELID
+	  parameter can also be a decimal number.
+	* [r5294] src/PCSC/ifdhandler.h, src/configfile.l: reader.conf
+	  configuration: If you want to use IFDHCreateChannel() instead of
+	  IFDHCreateChannelByName() then do not use any DEVICENAME line in
+	  the configuration file. IFDHCreateChannel() will then be called
+	  with the CHANNELID parameter.
+	  
+	  Closes: [#312749] Should call IFDHCreateChannel for serial driver
+	  with DEVICENAME /dev/null
+	* [r5293] src/readerfactory.c, src/winscard_clnt.c,
+	  src/winscard_svc.c: list_* functions return an decimal integer so
+	  use %d insteaf of %X to log the error value.
+	* [r5292] src/readerfactory.c: Add a "0x" before hex displays
+
+2010-10-10  Ludovic Rousseau
+
+	* [r5291] src/winscard_clnt.c: Doxygen SCardStatus(): *pdwState
+	  also contains a number of events
+	* [r5290] src/eventhandler.c, src/eventhandler.h,
+	  src/winscard_clnt.c: Split the card event counter out of the card
+	  event state on the pcscd side to simplify the code in
+	  EHStatusHandlerThread()
+	  
+	  The two information are combined on the client side in
+	  SCardGetStatusChange() and SCardStatus()
+	* [r5289]
+	  UnitaryTests/SCardGetStatusChange/SCardGetStatusChange_loop.py:
+	  Exit the endless loop in case of error
+	* [r5288] src/PCSC/pcsclite.h.in: struct SCARD_READERSTATE: use
+	  "DWORD" instead of "unsigned long" type for the fields
+	  dwCurrentState, dwEventState and cbAtr
+	  
+	  This is compliant to the Windows definition and allows to
+	  redefine DWORD to something other than unsigned long, like
+	  uint32_t
+	* [r5287] src/PCSC/pcsclite.h.in, src/error.c:
+	  pcsc_stringify_error(): Use "LONG" instead of "long" as parameter
+	  type to reflect the return type from winscard.h
+	  
+	  The LONG type may be redefined in PCSC/wintypes.h to int32_t for
+	  example
+
+2010-10-05  Ludovic Rousseau
+
+	* [r5281] src/winscard_clnt.c: Doxygen: do not document unused
+	  SCARD_STATE_ATRMATCH and SCARD_STATE_PRESENT states in
+	  SCardGetStatusChange()
+	  
+	  Thanks to Martin Paljak for the patch
+	* [r5280]
+	  UnitaryTests/SCardGetStatusChange/SCardGetStatusChange_loop.py:
+	  Call SCardGetStatusChange() in a endless loop
+	* [r5279] src/tokenparser.l: Doxygen: fix documentation of
+	  LTPBundleFindValueWithKey()
+	* [r5278] src/winscard_clnt.c: SCardGetStatusChange(): include the
+	  event counter in dwEventState even if dwCurrentState contains a
+	  counter at 0 (default).
+	* [r5277] doc/doxygen.conf.in: Update from Doxygen 1.5.5 to 1.7.1
+	  
+	  warning: Tag `DETAILS_AT_TOP' at line 163 of file
+	  doc/doxygen.conf has become obsolete. To avoid this warning
+	  please update your configuration file using "doxygen -u"
+
+2010-10-01  Ludovic Rousseau
+
+	* [r5275] src/pcscdaemon.c: main(): do not limit rights if run as
+	  root
+
+2010-09-19  Ludovic Rousseau
+
+	* [r5262] src/Makefile.am: Do not change the access rights of pcscd
+	  in the install rule but in another one. This is needed when
+	  building the package in a system without the pcscd group.
+
+2010-09-14  Ludovic Rousseau
+
+	* [r5256] configure.in: Do not generate src/PCSC/reader.h from
+	  src/PCSC/reader.h.in any more
+	* [r5255] src/PCSC/reader.h: HOST_TO_CCID_16() and
+	  HOST_TO_CCID_32() are now identity functions
+	  
+	  Since CCID 1.4.1 (revision 5252) the byte order is no more
+	  important
+	* [r5254] src/PCSC/reader.h, src/PCSC/reader.h.in: Rename
+	  reader.h.in in reader.h
+
+2010-09-04  Ludovic Rousseau
+
+	* [r5245] src/Makefile.am: Install pcscd as sgid pcscd instead of
+	  suid root
+	* [r5241] src/hotplug_libhal.c: HPReadBundleValues(): do not fail
+	  if the key "CFBundleName" is not found in a driver Info.plist.
+	  This key should only be defined for the CCID class driver.
+
+2010-09-03  Ludovic Rousseau
+
+	* [r5231] src/winscard_msg.c: Doxygen: remove documentation about
+	  the (now removed) timeOut parameter of MessageSend() and
+	  MessageSendWithHeader()
+
+2010-09-02  Ludovic Rousseau
+
+	* [r5227] src/winscard_clnt.c: Doxygen: clarify the use of one
+	  different SCARDCONTEXT per thread and the expection for
+	  SCardCancel()
+	* [r5226] src/winscard_svc.c: Remove protocol_major, protocol_minor
+	  fields from struct _psContext since they are not used.
+	* [r5225] src/winscard_msg.h: update PROTOCOL_VERSION_MINOR since
+	  struct pubReaderStatesList changed (readerID removed)
+	* [r5224] src/winscard_svc.c: ContextThread(): check that the
+	  procotol major.minor is the same for the daemon and lib. If not
+	  just fail. We are not backward compatible.
+	* [r5219] src/winscard_clnt.c: Complete change in revision 5212
+	  
+	  SCardGetStatusChange() and SCardListReaders() were broken.
+	* [r5218] src/ifdwrapper.c, src/readerfactory.c,
+	  src/readerfactory.h: Rename lpcLibrary in library and lpcDevice
+	  in device
+	* [r5217] src/eventhandler.c, src/eventhandler.h, src/pcscdaemon.c,
+	  src/readerfactory.c, src/readerfactory.h: Wait until all
+	  connected readers have a chance to power up a possibly inserted
+	  card.
+	  
+	  This is needed when auto start is used and a card is already
+	  present in a USB reader. The reader presence is correctly
+	  reported to libpcsclite but the power up has not yet happen. So
+	  the ATR is not yet available.
+	* [r5216] src/eventhandler.c, src/readerfactory.c,
+	  src/readerfactory.h, src/winscard_clnt.c: Rename lpcReaderName in
+	  readerName and use (char *) instead of LPSTR
+	* [r5215] src/eventhandler.c, src/readerfactory.c,
+	  src/readerfactory.h, src/winscard.c: Get rid of the lpcReader[]
+	  field in struct ReaderContext
+	  
+	  The reader name is already present in readerState->readerName
+	  linked from struct ReaderContext
+	  
+	  Gain: MAX_READERNAME*PCSCLITE_MAX_READERS_CONTEXTS = 100*16 =
+	  1600 bytes fo RAM on pcscd
+	* [r5214] src/winscard.c: SCardStatus(): remove a useless test
+	  
+	  lpcReader can't be larger than MAX_BUFFER_SIZE (264) since its
+	  buffer is only MAX_READERNAME (100) bytes long. And I don't see
+	  why we need this test anyway.
+	* [r5213] src/eventhandler.c, src/winscard.c: Complete change
+	  started in revision 5212
+	  
+	  rContext->readerState is never NULL now. So do not even check its
+	  value.
+	* [r5212] src/eventhandler.c, src/eventhandler.h,
+	  src/pcsc-wirecheck-gen.c, src/readerfactory.c,
+	  src/winscard_clnt.c: Get rid of the readerID field in struct
+	  pubReaderStatesList
+	* [r5211] src/readerfactory.c, src/readerfactory.h: Remove unused
+	  RFSuspendAllReaders() and RFAwakeAllReaders()
+
+2010-08-31  Ludovic Rousseau
+
+	* [r5204] src/eventhandler.c: Reformat
+
+2010-08-30  Ludovic Rousseau
+
+	* [r5202] src/winscard_msg_srv.c: InitializeSocket(): do not set
+	  the execution bit on the socket file. It is useless.
+
+2010-08-27  Ludovic Rousseau
+
+	* [r5196] src/debug.c, src/error.c, src/utils.c, src/utils.h: svn
+	  propset svn:keywords 'Author Date Id Revision'
+	* [r5195] src/utils.c: GetDaemonPid(): use open(3) instead of
+	  fopen(3) to avoid an internal malloc() call and gain some CPU
+	  cycles
+	* [r5194] src/hotplug_libhal.c: HPAddDevice(): wait 1 millisecond
+	  instead of 1 second until the device is visible to libusb/etc.
+
+2010-08-25  Ludovic Rousseau
+
+	* [r5183] src/winscard_clnt.c: Doxygen:
+	  SCardCheckDaemonAvailability() do not invalidate handles after a
+	  fork() any more
+
+2010-08-23  Ludovic Rousseau
+
+	* [r5179] src/hotplug_libusb.c: HPReadBundleValues(): use the new
+	  Info.plist parsing API.
+	  
+	  Parsing the CCID Info.plist (159 readers supported) was on a ARM9
+	  machine 13193049 µs and is now 258262 µs => gain x51 or 5008%
+	* [r5178] src/readerfactory.c: RFBindFunctions(): rename rv in rvl
+	  to avoid warnings warning: declaration of ‘rv’ shadows a previous
+	  local
+	  
+	  Also change type from DWORD to int since DYN_GetAddress() returns
+	  an int
+	* [r5177] src/readerfactory.c: RFLoadReader(): optimize the
+	  detection of Ifd Handler version by checking for
+	  "IFDHCreateChannelByName", "IFDHCreateChannel" and then
+	  "IO_Create_Channel" instead of the 3 symbols at once.
+	  
+	  Also suppress the error message suppression. Ifd handler v2 or v1
+	  will display one or two errors for symbols not found.
+	* [r5175] src/hotplug_libhal.c: HPReadBundleValues(): duplicate the
+	  readerName and CFBundleName strings since the originals are
+	  destroyed by bundleRelease() later
+	  
+	  The reader names were corrupted.
+
+2010-08-18  Ludovic Rousseau
+
+	* [r5160] ChangeLog: Fix typo
+
+2010-08-17  Ludovic Rousseau
+
+	* [r5157] src/hotplug_libhal.c: HPReadBundleValues(): use the new
+	  Info.plist parsing API.
+	  
+	  Parsing the CCID Info.plist (159 readers supported) was on a i386
+	  machine 264306 µs and is now 5547 µs => gain x47 or 4600%
+	* [r5156] src/parser.h, src/tokenparser.l: parse the Info.plist
+	  file only once and generate a list of key/values
+	* [r5152] src/hotplug_libusb.c: HPSearchHotPluggables(): create the
+	  synchronisation pipe only if the HPEstablishUSBNotifications
+	  thread is created. Avoids to leak resources.
+	* [r5151] src/hotplug_libusb.c: HPSearchHotPluggables(): wait for
+	  initial readers to setup only if HPEstablishUSBNotifications is
+	  created. Otherwise the process is blocked for ever.
+	* [r5150] src/hotplug_libhal.c: HPRegisterForHotplugEvents():
+	  having no bundle for USB readers is not an error. USB
+	  support/hotplug is just disabled.
+	* [r5149] src/pcscdaemon.c: main(): Log a message if
+	  HPRegisterForHotplugEvents() fails
+	* [r5148] src/hotplug_libusb.c: Do not hardcode the libusb-1.0
+	  include header path (remove the libusb-1.0/ part)
+
+2010-08-16  Ludovic Rousseau
+
+	* [r5147] configure.in: Do not hardcode the libusb.h path.
+	  
+	  See Debian bug #591782 ccid: FTBFS on kfreebsd-*: configure:
+	  error: libusb.h not found
+	* [r5146] c.sh: add --sysconfdir=/etc
+	* [r5145] src/pcscdaemon.c: Do not allow restricting defaults
+	  values of --max-thread, --max-card-handle-per-thread or
+	  --max-card-handle-per-reader when restricted
+	* [r5144] src/pcscdaemon.c: Do not allow APDU logging when
+	  restricted
+	* [r5143] src/pcscdaemon.c: If the process is setuid or setgid it
+	  may have some restrictions
+	  
+	  Do not allow to specify a configuration file when restricted
+
+2010-08-15  Ludovic Rousseau
+
+	* [r5138] ChangeLog, configure.in: release 1.6.4
+	* [r5137] configure.in: Do not use sysconfdir as configuration
+	  directory but ${sysconfdir}/reader.conf.d instead.
+	  
+	  Use --enable-confdir=DIR if you want to set a specific value
+	  without the reader.conf.d appended.
+	  
+	  Thanks to Kalev Lember for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2010-q3/0150.html
+	* [r5135] ChangeLog, configure.in: release 1.6.3
+	* [r5134] src/PCSC/pcsclite.h.in, src/PCSC/winscard.h: Define
+	  LPSCARD_READERSTATE since this is used in the MSDN prototype.
+	  
+	  Use LPSCARD_READERSTATE in winscard.h instead of
+	  (SCARD_READERSTATE *) to mimic the MSDN API.
+	  
+	  This partly reverts changeset 5096
+
+2010-08-13  Ludovic Rousseau
+
+	* [r5130] UnitaryTests/SCard_fork.py: Also call SCardDisconnect()
+	  and SCardReleaseContext() in the forked process
+	* [r5129] src/winscard_svc.c: ContextThread(): goto exit if
+	  MSGCheckHandleAssociation() fails instead of just returning no
+	  error.
+	  
+	  Something wrong happened on the client side (like a fork) and the
+	  client needs to call SCardEstablishContext() to create a new
+	  connection.
+	* [r5128] src/winscard_svc.c: ContextThread(): fix goto label when
+	  it _is_ an overflow
+	* [r5127] src/winscard_svc.c: ContextThread(): fix goto label when
+	  it is not an overflow
+	* [r5126] src/winscard_clnt.c: Revert changeset 5102 to add
+	  profiling on the client side again.
+	  
+	  ltrace(1) can't be used with a dynamically loaded (dlopen(3))
+	  library like it is the case with the majority of PKCS#11 client
+	  application.
+	* [r5125] src/simclist.c: Reset mid field when the list is empty to
+	  avoid assert() errors
+	* [r5124] src/winscard_svc.c: MSGCheckHandleAssociation(): check
+	  that the context handle is still valid. Calling a PC/SC function
+	  after SCardReleaseContext() is not supported.
+	* [r5123] src/eventhandler.c: Fix typo in comment
+
+2010-08-05  Ludovic Rousseau
+
+	* [r5118] configure.in: remove debug line
+	* [r5117] configure.in: "/reader.conf.d" is only appended to
+	  sysconfdir if no value of sysconfdir is provided
+	  
+	  Thanks to Patrice Angelini for the bug report
+	* [r5114] src/hotplug_libusb.c: HPAddHotPluggable(): do not use
+	  libusb_strerror() since it is not yet available in current stable
+	  libusb (1.0.8)
+	* [r5113] src/ifdwrapper.c: Fix compilation warnings
+	  ifdwrapper.c:166:7: warning: "IFDHANDLERv2" is not defined
+	  ifdwrapper.c:589:7: warning: "IFDHANDLERv2" is not defined
+	  ifdwrapper.c:640:7: warning: "IFDHANDLERv3" is not defined
+	* [r5112] src/ifdwrapper.c: Check that either IFDHANDLERv1,
+	  IFDHANDLERv2 or IFDHANDLERv3 is defined if PCSCLITE_STATIC_DRIVER
+	  is used
+	* [r5111] c.sh: No need to use -D_REENTRANT. It was needed for
+	  LinuxThreads but we do not use LinuxThreads since a long time.
+	  
+	  See Debian bug #475101 "Remove obsolete -D_REENTRANT requirement"
+
+2010-08-04  Ludovic Rousseau
+
+	* [r5107] ChangeLog, configure.in: release 1.6.2
+	* [r5106] src/Makefile.am: Remove useless $(COREFOUNDATION) from
+	  libpcsclite_la_LIBADD The library has no Mac OS X specific code.
+	* [r5105] src/Makefile.am: Remove undefined $(LIBSMARTCARD) from
+	  libpcsclite_la_LIBADD
+	* [r5104] src/Makefile.am: libpcsclite does not use dlopen() so no
+	  need to link with $(LIBDL)
+
+2010-08-03  Ludovic Rousseau
+
+	* [r5102] src/winscard_clnt.c: Remove client side profiling since
+	  we can use ltrace(1) with better results
+	* [r5098] configure.in: Remove 2 debug traces
+
+2010-08-02  Ludovic Rousseau
+
+	* [r5097] src/PCSC/winscard.h, src/winscard.c, src/winscard_clnt.c:
+	  Use "SCARD_IO_REQUEST *" instead of LPSCARD_IO_REQUEST and "const
+	  SCARD_IO_REQUEST *" instead of "LPCSCARD_IO_REQUEST
+	  
+	  Should make the code more easy to read
+	* [r5096] doc/example/pcsc_demo.c, src/PCSC/pcsclite.h.in,
+	  src/PCSC/winscard.h, src/testpcsc.c, src/utils/formaticc.c,
+	  src/winscard.c, src/winscard_clnt.c: Use SCARD_READERSTATE
+	  instead of SCARD_READERSTATE_A
+	  
+	  Remove definitions of SCARD_READERSTATE_A PSCARD_READERSTATE_A
+	  and LPSCARD_READERSTATE_A types
+	* [r5093] configure.in: Use $libdir instead of $prefix/lib to set
+	  the default value of usbdropdir
+	  
+	  " Fedora uses /usr/lib on 32 bit and /usr/lib64 on 64 bit
+	  multilib platforms. "
+	  
+	  Thanks to Kalev Lember for the idea.
+	  http://archives.neohapsis.com/archives/dev/muscle/2010-q3/0108.html
+	* [r5092] c.sh: sysconfdir=/etc by default if prefix=/usr so remove
+	  the --sysconfdir line
+	* [r5091] UnitaryTests/SCardBeginTransaction_Disconnect.py,
+	  UnitaryTests/SCardConnect_DIRECT.py,
+	  UnitaryTests/SCardConnect_DIRECT2.py,
+	  UnitaryTests/SCardExclusiveBehaviour.py,
+	  UnitaryTests/SCardReconnect.py, UnitaryTests/reset_card.py: Do
+	  not duplicate the reader index to avoids problems when I want to
+	  change it.
+
+2010-08-01  Ludovic Rousseau
+
+	* [r5082] configure.in: Set sysconfdir to /etc if prefix=/usr
+	  
+	  You should have a default working configuration only with
+	  --prefix=/usr
+
+2010-07-31  Ludovic Rousseau
+
+	* [r5081] c.sh: --enable-muscledropdir is no more supported by
+	  pcsc-lite since a long time. So remove the line.
+	* [r5080] c.sh: --enable-usbdropdir=/usr/lib/pcsc/drivers is now
+	  the default value. So remove the line.
+	* [r5079] configure.in: Default value of usbdropdir is now
+	  $prefix/lib/pcsc/drivers instead of $prefix/pcsc/drivers
+	  
+	  The new path is the path used on Debian (with prefix-/usr). So no
+	  need to change the default value.
+
+2010-07-27  Ludovic Rousseau
+
+	* [r5073] src/Makefile.am: Create empty directories used by drivers
+	  
+	  Thanks to Kalev Lember for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2010-q3/0065.html
+
+2010-07-26  Ludovic Rousseau
+
+	* [r5071] src/hotplug_libhal.c, src/pcscdaemon.c, src/utils.c,
+	  src/winscard.c: Do not affect and check a variable on the same
+	  line
+	* [r5070] src/readerfactory.c: reformat
+	* [r5069] src/winscard.c: Get the value of rContext before its use.
+	  A simple call to SCardTransmit() crashed with a NULL pointer.
+
+2010-07-08  Ludovic Rousseau
+
+	* [r5066] src/readerfactory.c: fix crash with empty config dir
+	  
+	  Thanks to Kalev Lember for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2010-q3/0017.html
+	  
+	  pcscd attempts to read uninitialized memory and free an invalid
+	  pointer when its configuration directory is empty.
+	  
+	  The patch fixes this by initializing reader_list to NULL.
+	  
+	  ==2658== Conditional jump or move depends on uninitialised
+	  value(s) ==2658== at 0x40A2EF: RFStartSerialReaders
+	  (readerfactory.c:1324) ==2658== by 0x40743F: main
+	  (pcscdaemon.c:522) ==2658== ==2658== Use of uninitialised value
+	  of size 8 ==2658== at 0x40A2F5: RFStartSerialReaders
+	  (readerfactory.c:1327) ==2658== by 0x40743F: main
+	  (pcscdaemon.c:522) ==2658== ==2658== Conditional jump or move
+	  depends on uninitialised value(s) ==2658== at 0x4C26D25: free
+	  (vg_replace_malloc.c:325) ==2658== by 0x40A404:
+	  RFStartSerialReaders (readerfactory.c:1348) ==2658== by 0x40743F:
+	  main (pcscdaemon.c:522) ==2658== ==2658== Invalid free() / delete
+	  / delete[] ==2658== at 0x4C26D72: free (vg_replace_malloc.c:325)
+	  ==2658== by 0x40A404: RFStartSerialReaders (readerfactory.c:1348)
+	  ==2658== by 0x40743F: main (pcscdaemon.c:522) ==2658== Address
+	  0x4222148 is not stack'd, malloc'd or (recently) free'd
+	  
+	  --- pcsc-lite-1.6.1/src/readerfactory.c.orig2010-07-04
+	  23:42:14.000000000 +0300 +++
+	  pcsc-lite-1.6.1/src/readerfactory.configuration2010-07-04
+	  23:42:23.000000000 +0300 @@ -1312,7 +1312,7 @@ void
+	  RFCleanupReaders(void) #ifdef USE_SERIAL int
+	  RFStartSerialReaders(const char *readerconf) {
+	  -readerconfSerialReader *reader_list; +reader_listSerialReader
+	  *reader_list = NULL; int i, rv; /* remember the configuration
+	  filename for * RFReCheckReaderConf() */
+	* [r5065] c.sh, configure.in, src/pcscd.h.in: more idiomatic
+	  sysconfdir usage
+	  
+	  Thanks to Kalev Lember for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2010-q3/0015.html
+	  
+	  > URL: http://svn.debian.org/wsvn/pcsclite/?sc=1&rev=5060 > Log:
+	  set --sysconfdir=/etc/reader.conf.d so that we parse any file in
+	  > this directory > > [...] > - --sysconfdir=/etc \ > +
+	  --sysconfdir=/etc/reader.conf.d \
+	  
+	  It's more common to set sysconfdir to /etc and have configure
+	  script figure out the subdirectory. The configure script should
+	  always default to sane values when no arguments are specified.
+	  The default value for sysconfdir is /usr/local/etc; so the
+	  configure script should just append /reader.conf.d to that. Right
+	  now if the user doesn't override sysconfdir, pcsc will try to go
+	  through every .conf file in /usr/local/etc, and I don't think
+	  anything good will come out of that.
+	  
+	  I have a patch attached which should make it more idiomatic:
+	  default to $sysconfdir/reader.conf.d directory.
+
+2010-07-02  Ludovic Rousseau
+
+	* [r5062] src/pcscd.h.in: remove PCSCLITE_READER_CONFIG now useless
+	* [r5061] src/pcscdaemon.c: main(): use PCSCLITE_CONFIG_DIR instead
+	  of PCSCLITE_READER_CONFIG to use the directory configured using
+	  --sysconfdir=...
+	* [r5060] c.sh: set --sysconfdir=/etc/reader.conf.d so that we
+	  parse any file in this directory
+	* [r5059] src/configfile.l: DBGetReaderListDir(): add a log line
+	  when parsing a directory (containing config files)
+	* [r5058] src/readerfactory.c, src/readerfactory.h, src/winscard.c:
+	  RFCheckSharing(), RFLockSharing(), RFUnlockSharing() &
+	  RFUnlockAllSharing(): add the READER_CONTEXT * rContext parameter
+	  to avoid recomputing it internally (gain a few CPU cycles)
+
+2010-06-29  Ludovic Rousseau
+
+	* [r5047] src/configfile.h, src/configfile.l, src/debuglog.c,
+	  src/dyn_hpux.c, src/dyn_macosx.c, src/dyn_unix.c,
+	  src/eventhandler.c, src/eventhandler.h, src/hotplug_generic.c,
+	  src/hotplug_libhal.c, src/hotplug_libusb.c, src/hotplug_linux.c,
+	  src/hotplug_macosx.c, src/ifdwrapper.c, src/ifdwrapper.h,
+	  src/pcscdaemon.c, src/readerfactory.c, src/readerfactory.h,
+	  src/sys_generic.h, src/sys_unix.c, src/testpcsc.c,
+	  src/winscard.c, src/winscard_clnt.c, src/winscard_msg.h,
+	  src/winscard_svc.c, src/winscard_svc.h: update copyright date
+	* [r5046] src/hotplug_libusb.c: Remove declaration of 3 static
+	  functions since they are defined before use. Declaration is then
+	  useless.
+	* [r5045] configure.in: check for libusb-1.0 instead of libusb-0.1
+	* [r5044] src/hotplug_libusb.c: port from libusb-0.1 to libusb-1.0
+
+2010-06-25  Ludovic Rousseau
+
+	* [r5040] UnitaryTests/MCT_ReaderDirect.py,
+	  UnitaryTests/control_get_firmware.py,
+	  UnitaryTests/control_switch_interface.py,
+	  UnitaryTests/stress_get_firmware.py: use readers() from
+	  smartcard.System instead of smartcard.pcsc.PCSCReader
+	  
+	  readers() method is now a staticmethod of the PCSCReader class
+	  since pyscard subversion revision 500.
+
+2010-06-24  Ludovic Rousseau
+
+	* [r5039] src/pcscdaemon.c: signal_trap(): implement a "Forced
+	  suicide" mechanism.
+	  
+	  After 3 Ctrl-C without much reaction from pcscd (in fact the
+	  drivers) we force the suicide. Sometimes libusb is blocked in a
+	  kind of dead-lock and kill -9 was the only option.
+	* [r5038] UnitaryTests/stress_apdu.py,
+	  UnitaryTests/stress_get_firmware.py: - better display the list of
+	  available readers - display the command duration and log to
+	  stderr if the duration is more than 1 second indicating a problem
+	* [r5037] UnitaryTests/stress_get_firmware.py: get firmware version
+	  of Gemalto readers in loop
+	* [r5036] UnitaryTests/stress_apdu.py: send an apdu in loop
+
+2010-06-22  Ludovic Rousseau
+
+	* [r5032] src/PCSC/debuglog.h: Add Log5() function
+	* [r5031] src/PCSC/ifdhandler.h: fix a comment
+	* [r5029] src/PCSC/ifdhandler.h, src/eventhandler.c: Add support of
+	  TAG_IFD_STOP_POLLING_THREAD to request the stop of the driver
+	  polling function.
+
+2010-06-21  Ludovic Rousseau
+
+	* [r5023] configure.in: Use AC_CHECK_FUNCS() instead of
+	  AC_CHECK_FUNC() to have HAVE_PTHREAD_CANCEL defined when needed.
+	  
+	  AC_CHECK_FUNC() defined nothing so HAVE_PTHREAD_CANCEL was not
+	  defined even if pthread_cancel() was available.
+
+2010-06-17  Ludovic Rousseau
+
+	* [r5009] src/pcscdaemon.c: main(): in case of auto exit create a
+	  new session so that Ctrl-C on the application will not also quit
+	  pcscd
+	  
+	  Thanks to Thierry Fabre for reporting the bug
+
+2010-06-13  Ludovic Rousseau
+
+	* [r4992] src/winscard_msg.h: typo in comment
+
+2010-06-12  Ludovic Rousseau
+
+	* [r4991] UnitaryTests/SCardBeginTransaction_Disconnect.py,
+	  UnitaryTests/SCardBlockingBehaviourTest.py,
+	  UnitaryTests/SCardCancel.py, UnitaryTests/SCardConnect_DIRECT.py,
+	  UnitaryTests/SCardConnect_DIRECT2.py,
+	  UnitaryTests/SCardExclusiveBehaviour.py,
+	  UnitaryTests/SCardGetAttrib.py, UnitaryTests/SCardReconnect.py,
+	  UnitaryTests/SCard_fork.py, UnitaryTests/ThreadSafe.py,
+	  UnitaryTests/ThreadSafeConnect.py, UnitaryTests/reset_card.py:
+	  return exception from smartcard.pcsc.PCSCExceptions when
+	  appropriate
+
+2010-06-09  Ludovic Rousseau
+
+	* [r4986] src/simclist.c: Avoid a division by 0. Closes [#312555]
+	  simclist bug in pcsc-lite
+	* [r4985] src/simclist.c, src/simclist.h: update to version version
+	  1.4.4rc4 Apr 2010
+
+2010-06-07  Ludovic Rousseau
+
+	* [r4983] src/winscard_clnt.c: SCardEstablishContext(): if pcscd is
+	  stared by libpcsclite then close all file handles except stdin,
+	  stdout and stderr so that pcscd does not confiscate ressources
+	  allocated by the application
+	  
+	  Thanks to Thierry Fabre for the bug report
+
+2010-06-04  Ludovic Rousseau
+
+	* [r4978] configure.in: release 1.6.1
+	* [r4977] ChangeLog: release 1.6.1
+
+2010-06-01  Ludovic Rousseau
+
+	* [r4974] src/misc.h, src/strlcpycat.h, src/tokenparser.l: update
+	  copyright date
+	* [r4969] src/pcscdaemon.c, src/sys_unix.c: pcscd: do not return
+	  before most of the initialisation are done correctly. The idea is
+	  that pcscd can return an error code if the daemon fails to start
+	  correctly (hald not started for example).
+	  
+	  Before the patch pcscd became a daemon, then returned 0 (success)
+	  and then continued with the initialisation. If the initialisation
+	  failed it was too late to return an error code. The
+	  /etc/init.d/pcscd script was not aware of the failure.
+	  
+	  Closes https://bugzilla.redhat.com/show_bug.cgi?id=580321
+	  "/usr/sbin/pcscd exit codes broken"
+
+2010-05-31  Ludovic Rousseau
+
+	* [r4968] src/pcscdaemon.c: main(): return EXIT_FAILURE instead of
+	  EXIT_SUCCESS if a unknown argument is passed
+
+2010-05-29  Ludovic Rousseau
+
+	* [r4967] src/winscard_msg.h, src/winscard_svc.c: Avoids a crash if
+	  a client sends a unknown command.
+	  
+	  Thanks to Martin Vogt for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2010-q2/0096.html
+
+2010-05-27  Ludovic Rousseau
+
+	* [r4964] src/winscard.c: SCardControl(): do not check for card
+	  events since we are talking to the reader not the card. A smart
+	  card removal should not make SCardControl() fail with
+	  SCARD_W_REMOVED_CARD
+
+2010-05-20  Ludovic Rousseau
+
+	* [r4957] UnitaryTests/SCardGetAttrib.py: get
+	  SCARD_ATTR_VENDOR_IFD_SERIAL_NO PC/SC attribute
+
+2010-05-18  Ludovic Rousseau
+
+	* [r4954] src/PCSC/reader.h.in: Add
+	  PCSCv2_PART10_PROPERTY_bPPDUSupport
+	* [r4953]
+	  UnitaryTests/SCardGetStatusChange/SCardGetStatusChange.py,
+	  UnitaryTests/SCardGetStatusChange/SCardGetStatusChange_PnP.py:
+	  Also display the return value of SCardReleaseContext()
+	* [r4952] src/pcscd.h.in, src/winscard_clnt.c, src/winscard_msg.c,
+	  src/winscard_msg.h, src/winscard_svc.c: MessageSend(),
+	  MessageReceive() & MessageSendWithHeader() do not timeout any
+	  more. If the other side of the socket dies we will get an error
+	  from the kernel.
+	  
+	  Add a new MessageReceiveTimeout() to implement
+	  SCardGetStatusChange() with a timeout.
+	  
+	  The constants PCSCLITE_WRITE_TIMEOUT & PCSCLITE_READ_TIMEOUT are
+	  now also removed.
+	  
+	  The problem was that if a client does nothing during
+	  PCSCLITE_READ_TIMEOUT (120 seconds by default) then pcscd
+	  considers it as a dead client and closes the connection. I guess
+	  this problem was present since the first version of pcsc-lite but
+	  nobody complained before.
+	  
+	  Thanks to Thierry Fabre for the bug report.
+	* [r4951] src/pcscdaemon.c, src/winscard_clnt.c,
+	  src/winscard_msg.c, src/winscard_msg.h, src/winscard_msg_srv.c,
+	  src/winscard_svc.c: rename SHMfoobar() functions in foobar()
+	  since we do not use shared memory (SHM) anymore
+
+2010-05-17  Ludovic Rousseau
+
+	* [r4949] src/hotplug_libusb.c: Add a synchronisation so that if
+	  pcscd is auto started the initial reader list is available before
+	  the server takes commands from clients.
+	  
+	  Before the change early calls of SCardListReaders() returned an
+	  empty list of readers even if a reader was connected.
+	  
+	  Thanks to Patrice Angelini for the bug report
+	* [r4948] etc: Remove etc directory completely - serial readers are
+	  rare => no need for /etc/reader.conf.d/ - pcscd now autostarts =>
+	  no need for /etc/init.d/pcscd script or equivalent
+	* [r4947] Makefile.am, configure.in: Do not install files in /etc
+	  any more. Serial drivers are rare now.
+	* [r4946] etc/Makefile.am: Use $(sysconfdir_exp) instead of
+	  (removed) $(confdir_exp)
+	  
+	  Fixes [#312498] Wrong installation path for reader.conf.d
+
+2010-05-11  Ludovic Rousseau
+
+	* [r4941] UnitaryTests/SCardConnect_DIRECT2.py: Unitary test for
+	  bug fixed in revision 4940
+	* [r4940] src/winscard.c: SCardConnect() & SCardReconnect(): do not
+	  reset the cardProtocol in SCARD_SHARE_DIRECT case since the card
+	  have _not_ been reseted. A new PPS negociation would fail.
+	  
+	  See SCardConnect_DIRECT2.py for a Unitary Test
+
+2010-05-05  Ludovic Rousseau
+
+	* [r4921] ChangeLog: update date and release for 1.6.0
+	* [r4920] ChangeLog, configure.in: release 1.6.0
+
+2010-05-04  Ludovic Rousseau
+
+	* [r4918] src/pcscdaemon.c: ExitValue default value is now
+	  EXIT_FAILURE instead of EXIT_SUCCESS
+	* [r4917] src/pcscdaemon.c: main(): remove dead code "used" when no
+	  reader.conf file is found
+
+2010-05-03  Ludovic Rousseau
+
+	* [r4913] src/winscard_clnt.c: SCardEstablishContext(): also log
+	  the binary name if execl() fails
+	* [r4912] src/eventhandler.c: EHDestroyEventHandler(): use
+	  pthread_cancel() only if it is present (not the case on Android)
+	* [r4911] configure.in: Add a check for pthread_cancel() (not
+	  present on Android)
+	* [r4910] src/readerfactory.h: Add missing #include <pthread.h>
+	  
+	  Compilation failed on Android but not on my Debian as the libC is
+	  different on the two systems. On Debian sys/types.h defines
+	  pthread types
+
+2010-04-29  Ludovic Rousseau
+
+	* [r4906] src/strlcpycat.h: #include <string.h> on plateform that
+	  have strlcpy() to avoid a warning (Mac OS X and Android)
+	  
+	  error.c: In function ‘pcsc_stringify_error’: error.c:64: warning:
+	  implicit declaration of function ‘strlcpy’ error.c:64: warning:
+	  nested extern declaration of ‘strlcpy’
+	* [r4905] src/hotplug_linux.c: #include <pthread.h>
+	  
+	  Declare pthread_mutex_* functions
+	* [r4904] src/hotplug_linux.c: #include "utils.h"
+	  
+	  Fix hotplug_linux.c:391: error: ‘THREAD_ATTR_DETACHED’ undeclared
+	  (first use in this function)
+	* [r4903] src/hotplug_libusb.c: HPEstablishUSBNotifications(): do
+	  not call RFReCheckReaderConf if USE_SERIAL is defined. The
+	  function is not defined in this case.
+	* [r4901] configure.in, src/Makefile.am, src/hotplug_libhal.c,
+	  src/pcscdaemon.c, src/readerfactory.c: Add --disable-serial and
+	  --disable-usb options
+	  
+	  --disable-serial removes support of /etc/reader.conf gain: 8.0kB
+	  of .text (12%) and 160 bytes of .bss (4%) for pcscd
+	  
+	  --disable-usb removes support of USB hotplug gain: 9.7kB of .text
+	  (14%) and 960 bytes of .bss (23%) for pcscd
+	  
+	  If you use both options (and use a static driver configuration)
+	  gain: 17.7kB of .text (26%) and 1152 bytes of .bss (28%) for
+	  pcscd
+	* [r4900] src/error.c: Define a minimal pcsc_stringify_error() if
+	  NO_LOG is defined. Only the error code in hex is displayed in
+	  this case.
+	  
+	  Gain: 2kB of .text (10%) for libpcsclite
+	* [r4899] src/pcscdaemon.c: main(): fork() only in case of auto
+	  exit to not detach from the terminal if launched in stand alone
+	  forground mode ("pcscd -fda" for example)
+
+2010-04-22  Ludovic Rousseau
+
+	* [r4889] src/pcscdaemon.c: main(): always fork() so that pcscd
+	  always return in --auto-exit mode but do not close stdout yet
+	  since we may need to send logs
+	* [r4888] src/winscard_clnt.c: SCardEstablishContext(): call
+	  waitpid() to avoid having a defunct pcscd process when pcscd is
+	  auto started by the client.
+	  
+	  The process becomes defunct because pcscd calls daemon() and
+	  daemon() does fork() and exit() in the father. The father death
+	  must then be reclaimed by libpcsclite.
+	  
+	  Thanks to Patrice Angelini for the bug report
+
+2010-04-18  Ludovic Rousseau
+
+	* [r4885] src/Makefile.am, src/eventhandler.c,
+	  src/hotplug_libhal.c, src/hotplug_libusb.c, src/hotplug_linux.c,
+	  src/ifdwrapper.c, src/pcscdaemon.c, src/readerfactory.c,
+	  src/readerfactory.h, src/thread_generic.h, src/thread_unix.c,
+	  src/winscard.c, src/winscard_clnt.c, src/winscard_svc.c: Directly
+	  use pthread_mutex_* fucntions instead of using wrappers Remove
+	  thread_unix.c and thread_generic.h now useless
+	* [r4884] src/hotplug_libhal.c, src/hotplug_libusb.c,
+	  src/hotplug_linux.c, src/hotplug_macosx.c, src/readerfactory.h,
+	  src/utils.c, src/winscard_svc.c: Use pthread_t instead of
+	  PCSCLITE_THREAD_T
+	* [r4883] src/thread_generic.h, src/utils.h: move thread related
+	  definition from thread_generic.h to utils.h
+	* [r4882] src/eventhandler.c, src/hotplug_libhal.c,
+	  src/hotplug_libusb.c, src/hotplug_linux.c, src/hotplug_macosx.c,
+	  src/thread_generic.h, src/thread_unix.c, src/utils.c,
+	  src/utils.h, src/winscard_svc.c: Directly use pthread_* instead
+	  of SYS_Thread* indirection
+	  
+	  Move SYS_ThreadCreate in utils.c. This function is not just one
+	  pthread_* call
+
+2010-04-16  Ludovic Rousseau
+
+	* [r4877] src/thread_unix.c: SYS_ThreadExit(): remove dead code
+	  
+	  From Sun Studio CC "thread_unix.c", line 108: warning: statement
+	  not reached
+	* [r4875] bootstrap: update versions of autotools used
+
+2010-04-15  Ludovic Rousseau
+
+	* [r4874] src/simclist.c: remove ; at end of a { } block defined by
+	  a macro. The Solaris compiler complains with: "simclist.c", line
+	  1317: warning: syntax error: empty declaration
+	  
+	  Thanks to Jörg Schilling for the bug report
+	* [r4873] src/sys_unix.c: use fork(), close() and chdir() instead
+	  of SYS_Fork(), SYS_CloseFile() and SYS_Chdir() in SYS_Daemon() if
+	  HAVE_DAEMON is not defined (Solaris)
+	  
+	  Thanks to Jörg Schilling for the bug report
+
+2010-04-09  Ludovic Rousseau
+
+	* [r4867] src/winscard_svc.c: Log the command return code using
+	  DEBUG (SCARD_S_SUCCESS) or ERROR (every thing else) level
+
+2010-04-08  Ludovic Rousseau
+
+	* [r4866] UnitaryTests/reset_card.py: reset a card using
+	  SCardDisconnect (default) or SCardReconnect (if an argument is
+	  passed)
+	* [r4865] UnitaryTests/transmit_loop.py: call SCardTransmit in an
+	  endless loop
+	* [r4864] src/winscard.c: SCardReconnect(): mimic the code from
+	  SCardDisconnect() regarding card event state notifications
+	  (changed in revision 4862).
+	* [r4863] UnitaryTests/Makefile: no more pcsc_demo target
+	* [r4862] src/winscard.c: SCardDisconnect(): Set the card event
+	  state to SCARD_RESET _before_ doing the reset.
+	  
+	  This will avoid an SCardTransmit from another application between
+	  the card reset and the card event state change. In the
+	  problematic case the SCardTransmit was sending an APDU in T=1 to
+	  a reseted card but not yet configured (IFDHSetProtocolParameters
+	  was not yet called) and still in T=0 (default)
+	* [r4861] src/winscard.c: SCardConnect() & SCardReconnect():
+	  correctly log SCARD_PROTOCOL_RAW protocol instead of "unknown"
+
+2010-04-07  Ludovic Rousseau
+
+	* [r4859] src/winscard_msg.c, src/winscard_msg_srv.c: Fix copyright
+	  name and date
+	* [r4858] src/winscard_msg.c: Doxygen: document SHMMessageReceive()
+	  command argument added in revision 4718
+	* [r4857] src/winscard_clnt.c: Doxygen:
+	  SCARD_ATTR_DEVICE_FRIENDLY_NAME is implemented by
+	  SCardGetAttrib() if the IFD Handler (driver) returns
+	  IFD_ERROR_TAG. pcsc-lite then returns the same reader name as
+	  returned by SCardListReaders.
+
+2010-04-01  Ludovic Rousseau
+
+	* [r4851] src/PCSC/reader.h.in: Add PCSCv2_PART10_PROPERTY_*
+	  defines
+
+2010-03-30  Ludovic Rousseau
+
+	* [r4845] src/winscard_clnt.c: SCardEstablishContext(): try to
+	  relaunch pcscd if SCardCheckDaemonAvailability() succeeds but
+	  SCardEstablishContextTH() fails. This happens if pcscd crashed
+	  without cleaning /var/run/pcscd/pcscd.comm
+
+2010-03-26  Ludovic Rousseau
+
+	* [r4843] src/PCSC/reader.h.in: add FEATURE_GET_TLV_PROPERTIES and
+	  FEATURE_CCID_ESC_COMMAND from PC/SC part 10 v2.02.07 March 2010
+
+2010-03-22  Ludovic Rousseau
+
+	* [r4839] src/pcscdaemon.c: Call at_exit() instead of exit() since
+	  the libC of Android is bogus and atexit() does not work as it
+	  should.
+	  
+	  Thanks to Patrice Angelini for the bug report.
+	* [r4838] src/winscard_clnt.c: SCardCheckDaemonAvailability(): use
+	  stat(2) instead of the now removed SYS_Stat()
+
+2010-03-19  Ludovic Rousseau
+
+	* [r4836] src/configfile.l, src/pcscdaemon.c, src/sys_generic.h,
+	  src/sys_unix.c, src/winscard_msg.c, src/winscard_msg_srv.c,
+	  src/winscard_svc.c: Remove the one line wrappers from sys_unix.c
+	  and use directly the POSIX functions instead.
+
+2010-03-16  Ludovic Rousseau
+
+	* [r4825] src/Makefile.am: Install pcscd as suid so that autostart
+	  works correctly (as root)
+	* [r4824] TODO: done: remove as much text messages (logs) as
+	  possible
+	* [r4823] configure.in: Display PCSCLITE_FEATURES
+	* [r4822] configure.in: Add --enable-embedded (default is no) to
+	  build pcsc-lite for an embedded system. This will activate the
+	  NO_LOG option to disable logging and limit RAM and disk
+	  consumption.
+	* [r4821] src/PCSC/debuglog.h, src/debug.c, src/debuglog.c,
+	  src/hotplug_libhal.c, src/winscard_svc.c: If NO_LOG is defined
+	  then no log are displayed. The idea is to limit the binaries size
+	  on disk and RAM consumption at execution time.
+	  
+	  With NO_LOG defined we gain 26% (17 kB) for the .text segment of
+	  pcscd and 15% (4 kB) for the .text segment of libpcsclite.so (for
+	  i386)
+	* [r4820] src/utils.c: Include config.h before the other header
+	  files so the configuration set in config.h can be used in the
+	  other header files (NO_LOG for example)
+	* [r4819] src/configfile.l: Include config.h before the other
+	  header files so the configuration set in config.h can be used in
+	  the other header files (NO_LOG for example)
+	* [r4818] src/Makefile.am, src/debug.c, src/debug.h,
+	  src/dyn_hpux.c, src/dyn_macosx.c, src/dyn_unix.c, src/sys_unix.c,
+	  src/tokenparser.l, src/utils.c, src/winscard_clnt.c,
+	  src/winscard_msg.c: Remove debug.h and use debuglog.h instead.
+	  They both define the same log API.
+
+2010-03-12  Ludovic Rousseau
+
+	* [r4813] UnitaryTests/ThreadSafe.py,
+	  UnitaryTests/ThreadSafeConnect.py: revert change in revision 4812
+	  since the problem is now solved in pyscard (revision 382)
+	* [r4812] UnitaryTests/ThreadSafe.py,
+	  UnitaryTests/ThreadSafeConnect.py: do not initialise the library
+	  in a thread as it crashed on Mac OS X
+
+2010-03-09  Ludovic Rousseau
+
+	* [r4809] src/winscard_svc.c: read only accesses to contextsList
+	  list shall also be protected by a mutex
+	* [r4808] src/readerfactory.c: read only accesses to handlesList
+	  list shall also be protected by a mutex
+	* [r4807] src/readerfactory.c, src/readerfactory.h: manipulations
+	  of handlesList field of ReaderContext should now be thread safe
+	* [r4806] src/winscard_svc.c: MSGRemoveContext(): correctly indent
+	  a line
+	* [r4805] src/winscard_svc.c: manipulations of cardsList should now
+	  be thread safe
+	* [r4804] src/winscard_svc.c: remove extra tab
+	* [r4803] UnitaryTests/ThreadSafeConnect.py: add more logging
+	* [r4802] UnitaryTests/ThreadSafeConnect.py: stress thread safeness
+	  of SCardConnect/SCardDisconnect
+	* [r4801] src/winscard_svc.c: manipulations of contextsList should
+	  now be thread safe
+	* [r4800] UnitaryTests/ThreadSafe.py: stress thread safeness
+
+2010-03-04  Ludovic Rousseau
+
+	* [r4793] UnitaryTests/SCardBlockingBehaviourTest.py,
+	  UnitaryTests/SCardExclusiveBehaviour.py: make pylint happier
+	* [r4792] UnitaryTests/MCT_ReaderDirect.py: make pylint happier
+	* [r4791] UnitaryTests/control_get_firmware.py: make pylint happy
+	* [r4790] UnitaryTests/control_get_firmware.py: remove useless
+	  import
+	* [r4789] UnitaryTests/MCT_ReaderDirect.py,
+	  UnitaryTests/control_get_firmware.py,
+	  UnitaryTests/control_switch_interface.py: use list comprehension
+	  instead of map() (more efficient and pylint does not like map())
+
+2010-03-03  Ludovic Rousseau
+
+	* [r4788] UnitaryTests/control_switch_interface.py: make pylint
+	  happier
+
+2010-03-02  Ludovic Rousseau
+
+	* [r4784] src/debuglog.c: debuglog.c is only used by pcscd. So no
+	  need to use #ifdef PCSCD
+
+2010-03-01  Ludovic Rousseau
+
+	* [r4783] TODO: fix typo
+
+2010-02-26  Ludovic Rousseau
+
+	* [r4779] configure.in, doc/Makefile.am,
+	  doc/update-reader.conf.8.in, etc/Makefile.am,
+	  etc/update-reader.conf.in, src/configfile.h, src/configfile.l,
+	  src/readerfactory.c: Add the ability to parse all the
+	  configuration files of a directory instead of just one
+	  configuration file. update-reader.conf is then now obsolete.
+	  
+	  See Debian bug #565896 http://bugs.debian.org/565896
+
+2010-02-25  Ludovic Rousseau
+
+	* [r4778] src/pcscdaemon.c: update copyright
+
+2010-02-23  Ludovic Rousseau
+
+	* [r4769] src/winscard_clnt.c: SCardEstablishContextTH() &
+	  SCardGetStatusChange(): completly initialize structures sent to
+	  the daemon to avoid a valgrind warning: Syscall param
+	  socketcall.send(msg) points to uninitialised byte(s)
+	* [r4768] UnitaryTests/SCardBlockingBehaviourTest.py: As of
+	  revision r4719 Linux is now Windows "compatible"
+
+2010-02-21  Ludovic Rousseau
+
+	* [r4766] src/misc.h: " The gcc on Solaris 10 combined with the Sun
+	  loader appears to not handle the gcc visibility attribute
+	  correctly. The sparc version says it is ignored, the x86 version
+	  gives linker error. The attached patch sun.gcc.1.5.6-svn-477.txt
+	  tries to test for gcc on Sun and not use the visibility
+	  attribute. If on a sun and the compiler is not GCC, try and use
+	  the Sun __global and __hidden instead. (I did not try the Sun
+	  Studio compiler with this.) "
+	  
+	  Thanks to Douglas E. Engert for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2010-q1/0127.html
+	* [r4765] doc/pcscd.8.in: use @sysconfdir_exp@ instead of (removed)
+	  @confdir@
+
+2010-02-12  Ludovic Rousseau
+
+	* [r4758] src/readerfactory.c: RFStartSerialReaders(): typo in
+	  comment
+	* [r4756] src/configfile.l, src/tokenparser.l: Fix 2 compilation
+	  warnings
+	  
+	  configfile.c:1151: warning: ‘input’ defined but not used
+	  tokenparser.c:1167: warning: ‘input’ defined but not used
+	* [r4755] src/lassert.h: Fix splint error
+	  src/pcsc-wirecheck-dist.c:19:164: Body of if clause of if
+	  statement is empty
+	* [r4754] src/hotplug_libhal.c: HPAddDevice(): fix a memory leak
+	* [r4753] src/readerfactory.c: RFRemoveReader(): simplify/factorise
+	  the resources deallocation
+
+2010-02-10  Ludovic Rousseau
+
+	* [r4751] etc/update-reader.conf.in: use @sysconfdir@ instead of
+	  (the now removed) @confdir@
+	  
+	  Thanks to Sébastien Lorquet for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2010-q1/0098.html
+
+2010-02-09  Ludovic Rousseau
+
+	* [r4744] src/readerfactory.c, src/readerfactory.h: use a dynamic
+	  instead of static allocation for lpcDevice
+	* [r4743] src/readerfactory.c: RFAddReader(): allocate an int
+	  instead of a DWORD for pFeeds
+	  
+	  The patch in revision 4741 was not complete
+	* [r4742] src/readerfactory.c, src/readerfactory.h: In struct
+	  ReaderContext rename pdwMutex to pMutex and change type from
+	  PDWORD to int *
+	* [r4741] src/readerfactory.c, src/readerfactory.h: In struct
+	  ReaderContext rename pdwFeeds to pFeeds and change type from
+	  PDWORD to int *
+	* [r4740] src/readerfactory.c, src/readerfactory.h: In struct
+	  ReaderContext remove the now useless dwBlockStatus field
+	* [r4739] src/eventhandler.c, src/ifdwrapper.c,
+	  src/readerfactory.c, src/readerfactory.h, src/winscard.c: In
+	  struct ReaderContext rename dwSlot to slot and change type from
+	  DWORD to int
+	* [r4738] src/ifdwrapper.c, src/readerfactory.c,
+	  src/readerfactory.h, src/winscard.c: In struct ReaderContext
+	  rename dwVersion to version and change type from DWORD to int
+	* [r4737] src/ifdwrapper.c, src/readerfactory.c,
+	  src/readerfactory.h: In struct ReaderContext change dwPort from
+	  DWORD to int and rename it to port
+	  
+	  Fix a compiler warning readerfactory.c: In function
+	  ‘RFReCheckReaderConf’: readerfactory.c:1393: warning: comparison
+	  between signed and unsigned
+	* [r4736] src/tokenparser.l: Fix compiler warning
+	  
+	  tokenparser.l: In function ‘tperrorCheck’: tokenparser.l:102:
+	  warning: unused parameter ‘token_error’
+	* [r4735] src/configfile.l, src/readerfactory.c,
+	  src/readerfactory.h: In struct SerialReader rename dwChannelId in
+	  channelId since it is an int and no more a DWORD
+	* [r4734] src/eventhandler.c: Fix a compiler warning
+	  
+	  eventhandler.c: In function ‘EHStatusHandlerThread’:
+	  eventhandler.c:494: warning: comparison between signed and
+	  unsigned
+	* [r4733] src/winscard_clnt.c: do not use the uint32_t rv structure
+	  field but copy it into rv first to avoid a compiler warning
+	  
+	  winscard_clnt.c: In function ?SCardReconnect?:
+	  winscard_clnt.c:1035: warning: comparison between signed and
+	  unsigned winscard_clnt.c: In function ?SCardBeginTransaction?:
+	  winscard_clnt.c:1254: warning: comparison between signed and
+	  unsigned winscard_clnt.c: In function ?SCardStatus?:
+	  winscard_clnt.c:1657: warning: comparison between signed and
+	  unsigned winscard_clnt.c: In function ?SCardTransmit?:
+	  winscard_clnt.c:2939: warning: comparison between signed and
+	  unsigned
+	* [r4732] src/PCSC/pcsclite.h.in: force the return codes SCARD_* to
+	  be long since the SCard* functions return a LONG type
+	* [r4731] src/eventhandler.c, src/readerfactory.c,
+	  src/readerfactory.h, src/winscard.c, src/winscard_svc.c: In
+	  struct ReaderContext dwLockId is used to store a SCARDHANDLE so
+	  change its type from DWORD to SCARDHANDLE and rename the field to
+	  hLockId
+	  
+	  Fix 2 compiler warning: winscard.c: In function
+	  'SCardDisconnect': winscard.c:847: warning: comparison between
+	  signed and unsigned winscard_svc.c: In function
+	  'MSGRemoveContext': winscard_svc.c:807: warning: comparison
+	  between signed and unsigned
+	* [r4730] src/winscard_msg.c: fix a compilation warning
+	  
+	  winscard_msg.c: In function ‘SHMMessageReceive’:
+	  winscard_msg.c:252: warning: unused parameter ‘command’
+	* [r4729] src/winscard_svc.c: fix 2 compilation warnings
+	  
+	  winscard_svc.c: In function ‘MSGRemoveContext’:
+	  winscard_svc.c:776: warning: comparison between signed and
+	  unsigned winscard_svc.c: In function ‘MSGAddHandle’:
+	  winscard_svc.c:848: warning: comparison between signed and
+	  unsigned
+	* [r4728] src/eventhandler.h, src/winscard_clnt.c: Use READER_STATE
+	  * instead of PREADER_STATE to make it explicit it is a pointer
+	* [r4727] src/eventhandler.c, src/eventhandler.h, src/ifdwrapper.c,
+	  src/ifdwrapper.h, src/readerfactory.c, src/readerfactory.h,
+	  src/winscard.c, src/winscard_svc.c: Use READER_CONTEXT * instead
+	  of PREADER_CONTEXT to make it explicit it is a pointer
+	* [r4726] src/readerfactory.c: Fix a compilation warning
+	  
+	  readerfactory.c: In function ‘RFAddReaderHandle’:
+	  readerfactory.c:1125: warning: comparison between signed and
+	  unsigned
+	* [r4725] src/eventhandler.c, src/readerfactory.c,
+	  src/readerfactory.h, src/winscard.c: In struct ReaderContext
+	  rename "dwContexts" to "contexts" since it is no more a DWORD but
+	  a int32_t
+	* [r4724] src/winscard_clnt.c: Fix a compilation warning
+	  
+	  winscard_clnt.c: In function ‘SCardListReaderGroups’:
+	  winscard_clnt.c:3258: warning: comparison between signed and
+	  unsigned
+	* [r4723] src/pcscd.h.in, src/readerfactory.c, src/readerfactory.h:
+	  Use dynamic instead of static allocation for the driver library
+	  filename. The filename is no more limited to 100 characters.
+	  
+	  Closes: [#312332] MAX_LIBNAME too short?
+	* [r4722] src/pcscdaemon.c, src/winscard_svc.c, src/winscard_svc.h:
+	  use int instead of unsigned int for customMaxThreadCounter,
+	  customMaxReaderHandles and customMaxThreadCardHandles since
+	  list_size() returns an int and we compare the two values (avoid
+	  sign mismatch)
+	* [r4721] src/winscard_svc.c: fix 2 compilation warnings
+	  
+	  winscard_svc.c: In function ‘CreateContextThread’:
+	  winscard_svc.c:146: warning: comparison between signed and
+	  unsigned winscard_svc.c: In function ‘MSGAddHandle’:
+	  winscard_svc.c:856: warning: comparison between signed and
+	  unsigned
+
+2010-02-08  Ludovic Rousseau
+
+	* [r4720] src/winscard_clnt.c: SCardGetStatusChange(): fix 4
+	  compilation warnings
+	  
+	  winscard_clnt.c: In function ‘SCardGetStatusChange’:
+	  winscard_clnt.c:1864: warning: comparison between signed and
+	  unsigned winscard_clnt.c:1875: warning: comparison between signed
+	  and unsigned winscard_clnt.c:1911: warning: comparison between
+	  signed and unsigned winscard_clnt.c:2189: warning: comparison
+	  between signed and unsigned
+	* [r4719] src/winscard_clnt.c: Make SCardReconnect(), SCardStatus()
+	  and SCardTransmit() block instead of returning
+	  SCARD_E_SHARING_VIOLATION immediately. These functions will then
+	  behave like on Windows.
+	  
+	  This can happen if these functions are called when the reader is
+	  locked by a PCSC transaction
+	  (SCardBeginTransaction/SCardEndTransaction).
+	  
+	  You can define the environment variable PCSCLITE_NO_BLOCKING to
+	  use the old behavior.
+	  
+	  Thanks to Jean-Luc Giraud for the patch.
+	  http://archives.neohapsis.com/archives/dev/muscle/2010-q1/0041.html
+	* [r4718] src/winscard_clnt.c, src/winscard_msg.c,
+	  src/winscard_msg.h, src/winscard_svc.c: add a command parameter
+	  to SHMMessageReceive() to be able log the ongoing command in case
+	  of problem
+
+2010-02-05  Ludovic Rousseau
+
+	* [r4717] UnitaryTests/SCardExclusiveBehaviour.py: Check the return
+	  value of SCardConnect() on a reader already used in
+	  SCARD_SHARE_EXCLUSIVE mode
+	* [r4716] src/winscard.c: fix a bug introduced by the previous
+	  revision
+	* [r4715] src/winscard.c: SCardGetAttrib(): check for buffer
+	  overflow with SCARD_ATTR_DEVICE_FRIENDLY_NAME
+	  
+	  Thanks to Jean-Luc Giraud for complete
+	  SCARD_ATTR_DEVICE_FRIENDLY_NAME patch
+
+2010-02-04  Ludovic Rousseau
+
+	* [r4710] src/PCSC/pcsclite.h.in, src/winscard_clnt.c: add a
+	  copyright for Martin Paljak
+
+2010-02-03  Ludovic Rousseau
+
+	* [r4708] configure.in, src/pcscd.h.in: Use the standard
+	  --sysconfdir=DIR ($prefix/etc by default) instead of
+	  --enable-confdir=DIR for defining the directory containing
+	  reader.conf
+	* [r4707] configure.in: sysconfdir_exp is a configuration directory
+	  not configuration file
+
+2010-02-02  Ludovic Rousseau
+
+	* [r4705] src/winscard.c: SCardStatus(): returns
+	  SCARD_E_SHARING_VIOLATION if the reader is already used More
+	  conform to Windows
+	* [r4704] UnitaryTests/SCardBlockingBehaviourTest.py: allow to use
+	  any reader and not just the first one
+	* [r4703] src/testpcsc.c: test SCARD_ATTR_DEVICE_FRIENDLY_NAME
+	* [r4702] src/winscard.c: SCardGetAttrib(): add support of
+	  SCARD_ATTR_DEVICE_FRIENDLY_NAME as it is better implemented in
+	  pcscd (it knows the friendly name)
+	* [r4701] src/winscard_clnt.c: SCardEstablishContext(): set
+	  PCSCLITE_PCSCD_ARGS with the argument you want to pass to pcscd
+	  in autostart Only one argument is passed. The space character is
+	  not a separator. example: export PCSCLITE_PCSCD_ARGS=-dfa
+	* [r4700] src/pcscd.h.in, src/pcscdaemon.c, src/winscard_clnt.c,
+	  src/winscard_svc.c: pcscd will suicide itself after 60 seconds of
+	  inactivity if it is started using --auto-exit This is the default
+	  behavior when pcscd is started by libpcsclite
+	* [r4699] src/pcscdaemon.c: do not ignore the SIGALRM signal any
+	  more since we need it for the auto exit feature
+
+2010-01-22  Ludovic Rousseau
+
+	* [r4685] configure.in: add $host to the PCSCLITE_FEATURES
+	  definition (available with "pcscd -v") to display the CPU
+	  architecture host is something like x86_64-unknown-linux-gnu
+	* [r4683] configure.in: use LT_INIT(disable-static) instead of the
+	  deprecated AM_DISABLE_STATIC
+	  
+	  Thanks to Roumen Petrov
+
+2010-01-21  Ludovic Rousseau
+
+	* [r4682] UnitaryTests/MCT_ReaderDirect.py,
+	  UnitaryTests/control_get_firmware.py,
+	  UnitaryTests/control_switch_interface.py: do not try to reset the
+	  card on exit. We are talking to the reader. A card may NOT be
+	  present.
+	* [r4681] configure.in, src/Makefile.am: Do not completely disable
+	  building the static version of the library but just disable it by
+	  default
+	  
+	  Use AM_DISABLE_STATIC in configure.in instead of -shared in
+	  Makefile.am
+
+2010-01-16  Ludovic Rousseau
+
+	* [r4674] UnitaryTests/SCardBlockingBehaviourTest.py: Check the
+	  behavior of PCSC functions when a PCSC transaction is ongoing
+	  
+	  Thanks to Jean-Luc Giraud for the original code
+	* [r4673] src/Makefile.am: use -shared to only provide a shared
+	  library. If you need to use the static .a library you just need
+	  to remove -shared
+
+2010-01-15  Ludovic Rousseau
+
+	* [r4672] UnitaryTests/control_switch_interface.py: parse error
+	  code
+	* [r4671] UnitaryTests/control_switch_interface.py: improve
+	  documentation and output
+	* [r4670] src/winscard_clnt.c: Only call SCardCheckSameProcess() if
+	  DO_CHECK_SAME_PROCESS is defined (default is not defined).
+	  
+	  Some thread libraries (on embedded systems for example) have a
+	  different pid for each thread of a same process. So the check
+	  using getpid() is wrong and handles are invalidated when they
+	  should not. The PC/SC function returned SCARD_E_INVALID_HANDLE
+	* [r4669] src/winscard_clnt.c: define and use the
+	  CHECK_SAME_PROCESS macro instead of calling
+	  SCardCheckSameProcess() directly
+
+2010-01-14  Ludovic Rousseau
+
+	* [r4668] src/winscard_clnt.c: Doxygen: update
+	  SCardGetStatusChange() doc. The function returns on any events,
+	  not just those specified in dwCurrentState
+	* [r4667] TODO: For embedded/constained systems
+	  
+	  - remove as much text messages (logs) as possible to limit the
+	  size of the binaries (pcscd and libpcsclite)
+	  
+	  - use static driver instead of reader polling and dynamic driver
+	  loading
+
+2010-01-08  Ludovic Rousseau
+
+	* [r4646] src/readerfactory.c: RFInitializeReader(): do not
+	  dynamically load the driver if PCSCLITE_STATIC_DRIVER is defined
+	* [r4645] src/ifdwrapper.c: better support of
+	  PCSCLITE_STATIC_DRIVER.
+	  
+	  This is used to statically link the reader driver to pcscd. Since
+	  the link is static you must define the IFDHandler API version at
+	  compilation time. Either define IFDHANDLERv1, IFDHANDLERv2 or
+	  IFDHANDLERv3
+	* [r4644] src/dyn_unix.c: fix a warning when compiling with
+	  PCSCLITE_STATIC_DRIVER defined
+	  
+	  dyn_unix.c: In function ‘DYN_CloseLibrary’: dyn_unix.c:47:
+	  warning: unused variable ‘ret’
+
+2010-01-03  Ludovic Rousseau
+
+	* [r4635] src/hotplug_macosx.c: hotplug_macosx.c: In function
+	  ‘HPDeviceAppeared’: hotplug_macosx.c:70: warning: unused
+	  parameter ‘refCon’ hotplug_macosx.c: In function
+	  ‘HPDeviceDisappeared’: hotplug_macosx.c:85: warning: unused
+	  parameter ‘refCon’
+
+2010-01-02  Ludovic Rousseau
+
+	* [r4634] src/simclist.c: fix a compilation warning
+	  simclist.c:1335: warning: unused parameter ‘el’
+	* [r4633] src/error.c: pcsc_stringify_error(): spelling error
+	  (detected by lintian(1))
+
+2010-01-01  Ludovic Rousseau
+
+	* [r4630] src/ifdwrapper.c: add #include <unistd.h> to declare the
+	  timeval structure
+	  
+	  In file included from ifdwrapper.c:31: utils.h:26: warning:
+	  ‘struct timeval’ declared inside parameter list utils.h:26:
+	  warning: its scope is only this definition or declaration, which
+	  is probably not what you want
+	* [r4629] src/dyn_unix.c, src/ifdwrapper.c, src/pcscdaemon.c:
+	  better handling of PCSCLITE_STATIC_DRIVER as can be used on
+	  plateforms using µClinux (without dynamic loader)
+	  
+	  Thanks to Guo Wenxue for a proto-patch
+	* [r4628] src/hotplug_generic.c, src/hotplug_linux.c,
+	  src/hotplug_macosx.c: ReCheckSerialReaders variable is not used
+	  anymore
+	* [r4627] src/winscard_msg_srv.c: ReCheckSerialReaders variable
+	  from hotplug_* is not used anymore
+
+2009-12-18  Ludovic Rousseau
+
+	* [r4621] src/winscard_svc.c: typo in log message
+
+2009-12-15  Ludovic Rousseau
+
+	* [r4616] src/atrhandler.c: ATRDecodeAtr(): reformat
+	* [r4615] src/atrhandler.c: ATRDecodeAtr(): check for TA2 (specific
+	  mode) even if TD2 is not present "3F 80 10 01" was not parsed
+	  correctly for example and T=0 was used instead of T=1 (specific
+	  mode)
+	* [r4613] UnitaryTests/MCT_ReaderDirect.py: rename
+	  FEATURE_MCT_READERDIRECT in FEATURE_MCT_READER_DIRECT
+	* [r4612] src/PCSC/reader.h.in: rename FEATURE_MCT_READERDIRECT in
+	  FEATURE_MCT_READER_DIRECT to be conform with ch. 2.3 of PCSC v2
+	  part 10
+
+2009-12-14  Ludovic Rousseau
+
+	* [r4611] UnitaryTests/SCard_fork.py: Unitary Test for fork()
+	  detection
+
+2009-12-11  Ludovic Rousseau
+
+	* [r4608] src/winscard_clnt.c: Doxygen: add missing error codes
+	* [r4607] src/winscard_svc.c: ContextThread(): SCARD_CANCEL return
+	  SCARD_E_INVALID_HANDLE instead of SCARD_E_INVALID_VALUE if the
+	  handle is invalid
+	* [r4606] src/winscard_clnt.c: Doxygen: document 2 missing
+	  SCARD_F_COMM_ERROR possible return values
+	* [r4605] src/winscard_clnt.c: Doxygen: document 3 missing error
+	  codes for SCardConnect()
+	* [r4604] src/PCSC/pcsclite.h.in: reformat
+	* [r4603] src/winscard_clnt.c: use sizeof(SCARD_IO_REQUEST) instead
+	  of 8 for the .cbPciLength field This is the correct value on
+	  64-bit system.
+	* [r4602] src/pcscdaemon.c, src/winscard.c: g_rgSCard*Pci are not
+	  used on the server side
+	* [r4601] src/pcscdaemon.c: SIGHUP signal has already been set to
+	  SIG_IGN. No need to quit on SIGHUP.
+	* [r4600] src/pcscdaemon.c: revert revision 4599 and remove the
+	  second call to signal() instead of the first one. We need to
+	  clean-up as soon as we created the files.
+	* [r4599] src/pcscdaemon.c: remove duplicate calls to signal()
+
+2009-12-03  Ludovic Rousseau
+
+	* [r4587] src/winscard_clnt.c: Doxygen: SCardConnect() value 0 for
+	  dwPreferredProtocols valid only if dwShareMode is
+	  SCARD_SHARE_DIRECT
+	* [r4585] src/winscard_clnt.c: use the more efficient
+	  SCardCheckSameProcess() instead of SCardCheckDaemonAvailability()
+	  to detect use of the API after a fork()
+
+2009-12-02  Ludovic Rousseau
+
+	* [r4583] src/winscard_clnt.c: Doxygen: SCardEstablishContext()
+	  Each thread of an application shall use its own SCARDCONTEXT. On
+	  Windows the same SCARDCONTEXT can be shared by different threads
+	  of same application.
+
+2009-11-27  Ludovic Rousseau
+
+	* [r4580] src/winscard_clnt.c: SCardEstablishContext(): try to
+	  start the pcscd daemon if not already running
+	* [r4579] configure.in: define PCSCD_BINARY
+	* [r4577] src/pcscdaemon.c: improve the checking of an already
+	  running pcscd
+	* [r4576] src/winscard_clnt.c: Doxygen: For historical reasons the
+	  value of SCARD_E_UNSUPPORTED_FEATURE is 0x8010001F in pcsc-lite
+	  but 0x80100022 in Windows WinSCard
+	* [r4575] src/PCSC/pcsclite.h.in: SCARD_E_UNSUPPORTED_FEATURE is
+	  not a PC/SC Lite specific extension, but its numerical value is
+	  different on Windows
+
+2009-11-26  Ludovic Rousseau
+
+	* [r4574] src/PCSC/pcsclite.h.in, src/error.c: remove pcsc-lite
+	  specific SCARD_W_INSERTED_CARD code
+	  
+	  SCARD_W_INSERTED_CARD value 0x8010006A was also in collision with
+	  SCARD_W_SECURITY_VIOLATION
+	* [r4573] src/error.c: reorder error codes
+
+2009-11-24  Ludovic Rousseau
+
+	* [r4570] src/winscard_clnt.c: do not declare the SCardUnload()
+	  function removed in revision 4435
+	* [r4569] src/winscard_clnt.c: create a SCardInvalidateHandles()
+	  function from SCardCheckDaemonAvailability() code
+	* [r4568] src/winscard_clnt.c: SCardCheckDaemonAvailability(): do
+	  not delete the context since it is already done by
+	  SCardCleanContext()
+	* [r4567] src/winscard_clnt.c: SCardCleanContext(): deallocate the
+	  context memory
+
+2009-11-23  Ludovic Rousseau
+
+	* [r4566] src/winscard_clnt.c: Doxygen: update SCardControl() list
+	  of possible error codes partly revert revision 4558
+	  
+	  Thanks to Martin Paljak for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2009-q4/0079.html
+
+2009-11-19  Ludovic Rousseau
+
+	* [r4562] src/eventhandler.c, src/readerfactory.c,
+	  src/winscard_clnt.c, src/winscard_svc.c: use list_delete()
+	  instead of list_locate() + list_delete_at()
+	* [r4561] src/simclist.c, src/simclist.h: add list_delete()
+	  "expunge the first found given element from the list"
+
+2009-11-18  Ludovic Rousseau
+
+	* [r4560] UnitaryTests/MCT_ReaderDirect.py,
+	  UnitaryTests/SCardBeginTransaction_Disconnect.py,
+	  UnitaryTests/SCardCancel.py, UnitaryTests/SCardConnect_DIRECT.py,
+	  UnitaryTests/SCardGetStatusChange/SCardGetStatusChange.py,
+	  UnitaryTests/SCardGetStatusChange/SCardGetStatusChange_PnP.py,
+	  UnitaryTests/SCardReconnect.py,
+	  UnitaryTests/control_get_firmware.py,
+	  UnitaryTests/control_switch_interface.py: reformat to make
+	  pep8(1) happy
+	* [r4559] src/winscard_clnt.c: Doxygen improvement
+	* [r4558] src/winscard_clnt.c: Doxygen: update SCardControl() list
+	  of possible error codes
+	* [r4554] src/readerfactory.c, src/winscard_clnt.c,
+	  src/winscard_svc.c: add Jean-Luc Giraud in copyright holders
+	  because of his patch in revision 4553
+
+2009-11-17  Ludovic Rousseau
+
+	* [r4553] src/Makefile.am, src/pcscd.h.in, src/pcscdaemon.c,
+	  src/readerfactory.c, src/readerfactory.h, src/winscard_clnt.c,
+	  src/winscard_svc.c, src/winscard_svc.h: Use lists instead of
+	  fixed size arrays to store handles.
+	  
+	  It is now possible to have: - 200 simultaneous PC/SC clients
+	  instead of 16 - 200 SCardConnect per client instead of 16 - 200
+	  clients per reader instead of 16
+	  
+	  The default value of 200 can be changed by giving an argument to
+	  pcscd --max-thread --max-card-handle-per-thread
+	  --max-card-handle-per-reader
+	  
+	  Thanks to Jean-Luc Giraud for the big patch
+	* [r4552] src/readerfactory.c: RFCreateReaderHandle(): add a
+	  comment that a 16-bit random is not secure enough
+
+2009-11-16  Ludovic Rousseau
+
+	* [r4549] UnitaryTests/SCardReconnect.py: SCardReconnect() should
+	  block instead of returning SCARD_E_SHARING_VIOLATION
+	* [r4548] UnitaryTests/SCardConnect_DIRECT.py: typo in text
+	* [r4547] src/winscard_svc.c: remove printf() for debug from
+	  READ_BODY() macro
+
+2009-11-12  Ludovic Rousseau
+
+	* [r4544] UnitaryTests/BufferOverflow.c, src/PCSC/ifdhandler.h,
+	  src/PCSC/pcsclite.h.in, src/PCSC/reader.h.in,
+	  src/PCSC/winscard.h, src/PCSC/wintypes.h, src/atrhandler.c,
+	  src/atrhandler.h, src/configfile.h, src/configfile.l,
+	  src/debug.c, src/debug.h, src/debuglog.c, src/dyn_generic.h,
+	  src/dyn_hpux.c, src/dyn_unix.c, src/error.c, src/eventhandler.c,
+	  src/eventhandler.h, src/hotplug.h, src/hotplug_libhal.c,
+	  src/hotplug_libusb.c, src/hotplug_linux.c, src/ifdwrapper.c,
+	  src/ifdwrapper.h, src/lassert.h, src/misc.h, src/parser.h,
+	  src/pcsc-wirecheck-gen.c, src/pcscd.h.in, src/pcscdaemon.c,
+	  src/powermgt_generic.c, src/readerfactory.c, src/readerfactory.h,
+	  src/strlcpycat.h, src/sys_generic.h, src/sys_unix.c,
+	  src/thread_generic.h, src/thread_unix.c, src/tokenparser.l,
+	  src/utils.c, src/utils.h, src/utils/formaticc.c,
+	  src/utils/installifd.c, src/winscard.c, src/winscard_clnt.c,
+	  src/winscard_msg.c, src/winscard_msg.h, src/winscard_msg_srv.c,
+	  src/winscard_svc.c, src/winscard_svc.h: update copyright dates
+
+2009-11-07  Ludovic Rousseau
+
+	* [r4540] src/winscard_svc.c: remove ducplicate READ_BODY() and
+	  WRITE_BODY() macros
+
+2009-11-06  Ludovic Rousseau
+
+	* [r4538] src/winscard_clnt.c: remove useless PCHANNEL_MAP type
+	  definition
+	* [r4537] src/winscard_clnt.c: remove extra spaces at end of line
+	* [r4536] src/hotplug_libusb.c: reindent
+	* [r4535] src/hotplug_linux.c: reindent
+	* [r4534] src/ifdwrapper.c: reindent
+	* [r4533] src/readerfactory.c: RFAddReader(): make comment more
+	  clear for TAG_IFD_SLOT_THREAD_SAFE
+	* [r4532] src/readerfactory.c: RFAddReader(): make comment more
+	  clear for TAG_IFD_THREAD_SAFE
+
+2009-11-05  Ludovic Rousseau
+
+	* [r4531] src/winscard_msg.c, src/winscard_msg_srv.c: use PF_*
+	  instead of AF_* for socket(2) argument
+	  
+	  Thanks to Sébastien Lorquet for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2009-q4/0039.html
+	* [r4530] src/winscard_msg.c, src/winscard_msg_srv.c: Revert change
+	  in revision 4395. Solaris does not have (Posix) AF_LOCAL
+	  
+	  Thanks to Douglas E. Engert for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2009-q4/0038.html
+
+2009-11-03  Ludovic Rousseau
+
+	* [r4529] src/readerfactory.h: remove useless pointer types
+
+2009-11-02  Ludovic Rousseau
+
+	* [r4528] src/winscard_clnt.c: SCardConnect(), SCardDisconnect() &
+	  SCardReleaseContext(): correctly handle error cases profiling
+
+2009-10-28  Ludovic Rousseau
+
+	* [r4527] src/readerfactory.h, src/thread_generic.h,
+	  src/thread_unix.c, src/winscard_clnt.c: remove the type
+	  PCSCLITE_MUTEX_T and use an explicit pointer type (PCSCLITE_MUTEX
+	  *) instead
+	  
+	  This should avoid bugs like the one corrected in revision 4525
+	* [r4525] src/eventhandler.c: correctly use the lock API for
+	  ClientsWaitingForEvent_lock
+	* [r4524] src/pcscdaemon.c, src/readerfactory.c,
+	  src/readerfactory.h: call exit() in SVCServiceRunLoop() instead
+	  of RFCleanupReaders() and remove the RFCleanupReaders() parameter
+	* [r4523] src/readerfactory.c: use return() instead of exit() if
+	  DYN_GetAddress() fails
+	* [r4522] src/eventhandler.c: explicitly use (void)fct() to ignore
+	  the returned value
+
+2009-10-27  Ludovic Rousseau
+
+	* [r4520] src/eventhandler.c: EHStatusHandlerThread(): call
+	  EHSignalEventToClients() _after_ logging "Card inserted into ..."
+	* [r4519] src/winscard_svc.c: ContextThread(): add the client ID to
+	  the command log message
+	* [r4518] src/winscard_clnt.c: SCardGetStatusChange(): use
+	  SCARD_*_CONTEXT constants instead of numerical values
+	* [r4517] src/eventhandler.h, src/winscard.c: move SCARD_*_CONTEXT
+	  from winscard.c to eventhandler.h
+	* [r4516] src/winscard.c: remove useless SCARD_NO_LOCK define
+	* [r4515] src/eventhandler.c: update comment
+	* [r4514] src/winscard_clnt.c, src/winscard_msg.c,
+	  src/winscard_svc.c: SHMMessageReceive() now returns -2 in case of
+	  timeout and -1 in case of other error
+	  
+	  This is used to correctly handle timeouts in
+	  SCardGetStatusChange()
+	* [r4513] src/winscard_svc.c: ContextThread(): when a client dies
+	  call EHTryToUnregisterClientForEvent() to unregister it if needed
+	* [r4512] src/eventhandler.c, src/eventhandler.h: add
+	  EHTryToUnregisterClientForEvent()
+
+2009-10-18  Ludovic Rousseau
+
+	* [r4497] src/winscard_msg.c: SHMMessageSend(): document the use of
+	  MSG_NOSIGNAL to ignore SIGPIPE signal
+
+2009-10-13  Ludovic Rousseau
+
+	* [r4491] src/Makefile.am: do not use PCSC_CLIENT_SRC variable
+	  anymore since SCF support has been removed
+	* [r4490] src/Makefile.am: libpcsclite does not need to have
+	  dyn_hpux.c, dyn_macosx.c or dyn_unix.c. These files define
+	  DYN_LoadLibrary/DYN_CloseLibrary/DYN_GetAddress
+	* [r4489] pbx, pcsc.pbproj: remove Xcode files. Apple has its own
+	  version of pcsc-lite for Mac OS X
+	* [r4488] src/winscard_clnt.c: Doxygen(): better documentation for
+	  SCardCheckDaemonAvailability()
+	* [r4487] src/winscard_clnt.c: revert changeset 4485.
+	  SCardCheckDaemonAvailability() is also used to invalidate the
+	  PC/SC handles after a fork or a pcscd restart
+	* [r4486] configure.in, src/Makefile.am, src/winscard_scf.c: remove
+	  SCF support (PC/SC over Smart Card Framework). I never used this
+	  feature and SCF is now dead and replaced by JSR 268
+	  (javax.smartcardio)
+
+2009-10-12  Ludovic Rousseau
+
+	* [r4485] src/winscard_clnt.c: SCardReleaseContext(),
+	  SCardConnect(), SCardReconnect(), SCardDisconnect(),
+	  SCardBeginTransaction(), SCardEndTransaction(),
+	  SCardCancelTransaction(), SCardStatus(), SCardGetStatusChange(),
+	  SCardControl(), SCardGetSetAttrib(), SCardTransmit(),
+	  SCardListReaders(), SCardFreeMemory()SCardListReaderGroups(),
+	  SCardIsValidContext(): do not SCardCheckDaemonAvailability()
+	  since we will try to talk to the server later. Any communication
+	  problem will be reported by SHMMessageSendWithHeader()
+	* [r4484] src/winscard_clnt.c: SCardDisconnect(): factorize exit
+	  code
+	* [r4483] src/winscard_clnt.c: SCardReconnect(): factorize exit
+	  code
+	* [r4482] src/winscard_clnt.c: SCardConnect(): factorize exit code
+	* [r4481] src/winscard_clnt.c: SCardReleaseContext(): release
+	  context even if communication with the server fails
+	* [r4480] src/winscard_msg.c: SHMMessageSend(): use send(...,
+	  MSG_NOSIGNAL) instead of write(...) to avoid receiving a SIGPIPE
+	  signal if pcscd has exited. We just get EPIPE as return value
+	* [r4479] src/winscard_clnt.c: SCardReconnect(),
+	  SCardBeginTransaction(), SCardEndTransaction(),
+	  SCardCancelTransaction(), SCardControl(), SCardGetSetAttrib() and
+	  SCardTransmit(): do not "synchronize reader states with daemon"
+	  since reader availability checks are done on the server side.
+
+2009-10-09  Ludovic Rousseau
+
+	* [r4476] src/winscard_clnt.c: Doxygen improvement
+	* [r4474] src/PCSC/ifdhandler.h: Doxygen: define an IFDHandler
+	  group
+	* [r4473] src/PCSC/ifdhandler.h: Add Doxygen documentation of the
+	  IFD Handler API
+	* [r4472] src/PCSC/ifdhandler.h: remove IFD_Handler 1.0 functions
+	  prototypes
+	* [r4471] src/winscard_clnt.c: Doxygen: use @param[in,out] for in
+	  and out parameters
+
+2009-10-08  Ludovic Rousseau
+
+	* [r4468] doc/example/pcsc_demo.c: cleanly exits in case of unknown
+	  protocol
+	* [r4467] doc/example/pcsc_demo.c: use SCARD_AUTOALLOCATE for
+	  SCardListReaders()
+	* [r4466] src/simclist.c, src/simclist.h: remove svn:executable
+	  property on source files
+	* [r4465] src/sys_generic.h, src/sys_unix.c: Define SYS_Fork() only
+	  if used (if HAVE_DAEMON is not set)
+	* [r4464] src/sys_generic.h, src/sys_unix.c: Remove useless
+	  SYS_GetPageSize(), SYS_MemoryMap(), SYS_PublicMemoryMap(),
+	  SYS_PublicMemoryUnmap() and SYS_MMapSynchronize()
+	* [r4463] src/sys_generic.h, src/sys_unix.c: Remove useless
+	  SYS_ReadFile()
+	* [r4462] src/sys_generic.h, src/sys_unix.c: Remove useless
+	  SYS_SeekFile()
+	* [r4461] src/sys_generic.h: Remove SYS_ChangePermissions()
+	  prototype (the function is NOT defined anywhere)
+	* [r4460] src/sys_generic.h, src/sys_unix.c: Remove useless
+	  SYS_GetUID() & SYS_GetGID()
+	* [r4459] src/sys_generic.h, src/sys_unix.c: Remove useless
+	  SYS_GetPID()
+	* [r4458] src/sys_generic.h, src/sys_unix.c, src/winscard_clnt.c:
+	  SYS_Initialize() does nothing. Remove it.
+	* [r4457] src/readerfactory.c: Comment out RFSuspendAllReaders()
+	  and RFAwakeAllReaders(). We do not yet support suspend/resume on
+	  Linux
+	* [r4456] src/readerfactory.c, src/readerfactory.h: remove useless
+	  RFListReaders()
+	* [r4455] src/readerfactory.c, src/readerfactory.h: remove useless
+	  RFUnblockContext()
+	* [r4454] src/readerfactory.c, src/readerfactory.h, src/winscard.c:
+	  remove useless RFUnblockReader()
+	* [r4453] src/pcscd.h.in, src/readerfactory.c, src/winscard_clnt.c:
+	  do not use contextBlockStatus tpo block/unblock a context. We now
+	  use SCardCancel() on the server side to unblock
+	  SCardGetStatusChange()
+	* [r4452] doc/Makefile.am, doc/pcsc-lite.bib, doc/pcsc-lite.tex:
+	  The .tex documentation is no more maintained. The reference
+	  WinSCard API documentation is from Doxygen now.
+	* [r4451] UnitaryTests/SCardConnect_DIRECT.py: add documentation
+	* [r4447] src/ifdwrapper.c: IFDControl(): return
+	  SCARD_E_INSUFFICIENT_BUFFER if the driver returns
+	  IFD_ERROR_INSUFFICIENT_BUFFER
+	* [r4445] src/winscard.c: SCardGetAttrib(): return
+	  SCARD_E_INSUFFICIENT_BUFFER if the driver returns
+	  IFD_ERROR_INSUFFICIENT_BUFFER
+	  
+	  Thanks to Emmanuel Deloget for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2009-q4/0003.html
+	* [r4444] src/PCSC/ifdhandler.h: add IFD_ERROR_INSUFFICIENT_BUFFER
+	* [r4443] src/winscard.c: SCardReconnect(): log the selected
+	  protocol (as done in SCardConnect())
+	* [r4442] src/winscard_clnt.c: SCardReconnect(): return
+	  SCARD_E_SHARING_VIOLATION instead of blocking if the reader
+	  cannot be shared.
+	  
+	  This change was made in revision 2475 but I don't remember why.
+	  
+	  Thanks to Paul Klissner for the bug report
+	  http://archives.neohapsis.com/archives/dev/muscle/2009-q3/0106.html
+
+2009-10-06  Ludovic Rousseau
+
+	* [r4438] src/winscard_clnt.c, src/winscard_msg.h: remove typedefs
+	  and explicitly use struct for structures
+	* [r4437] src/pcsc-wirecheck-gen.c: update to the new client/server
+	  ABI
+	* [r4436] src/utils.c, src/utils.h: remove now useless
+	  StatSynchronize() and StatSynchronizeContext()
+	* [r4435] src/winscard_clnt.c: remove now useless SCardUnload()
+	* [r4434] src/eventhandler.c, src/pcscd.h.in, src/pcscdaemon.c,
+	  src/readerfactory.c, src/winscard.c, src/winscard_clnt.c,
+	  src/winscard_msg.c, src/winscard_msg.h, src/winscard_msg_srv.c,
+	  src/winscard_svc.c: redesign the client/server communication: -
+	  no more shared memory used (allow pcscd and libpcsclite1.so to be
+	  on different computer and talk over a network) - no more
+	  difference between short and extended APDU - no more use of a
+	  /var/run/pcscd/pcscd.events/ directory. events are sent through
+	  the socket - simpler command format between client and server
+	  
+	  The side effect is that you are not able to mix an old pcscd with
+	  a new libpcsclite1.so or the reverse. SCardEstablishContext()
+	  will fail unless you update both sides of the communication.
+	* [r4433] src/winscard_msg.c: reformat comment
+	* [r4432] src/winscard_svc.c, src/winscard_svc.h: add
+	  MSGSignalClient()
+	* [r4431] src/winscard_msg.h: add struct wait_reader_state_change
+	* [r4430] src/pcscd.h.in: add PCSCLITE_WRITE_TIMEOUT and
+	  PCSCLITE_READ_TIMEOUT
+	* [r4429] src/winscard_msg.c: reformat comments
+	* [r4428] src/eventhandler.c, src/eventhandler.h: add
+	  EHRegisterClientForEvent(), EHUnregisterClientForEvent() and
+	  EHSignalEventToClients()
+	* [r4427] src/Makefile.am: add simclist.{c,h} to pcscd dependencies
+	* [r4426] src/simclist.c, src/simclist.h: Library to manage lists
+	  Fetched from http://mij.oltrelinux.com/devel/simclist/
+
+2009-10-05  Ludovic Rousseau
+
+	* [r4425] UnitaryTests/SCardCancel.py: display return values even
+	  if no error returned
+
+2009-10-03  Ludovic Rousseau
+
+	* [r4419] src/winscard_clnt.c: Doxygen document SCardConnect()
+	  difference with Windows for SCARD_SHARE_DIRECT
+
+2009-10-02  Ludovic Rousseau
+
+	* [r4418] src/winscard_clnt.c: add Doxygen section: Known
+	  differences with Microsoft Windows WinSCard implementation
+
+2009-09-29  Ludovic Rousseau
+
+	* [r4408] src/pcscdaemon.c: main(): check RFAllocateReaderSpace()
+	  returned value
+	* [r4407] src/winscard_clnt.c: SCardGetStatusChange(): Calling with
+	  cReaders == 0 will now just return SCARD_S_SUCCESS
+	  
+	  Use the special reader name "\\?PnP?\Notification" to wait for a
+	  reader event notification
+	* [r4406] src/pcscd.h.in: remove comment about PCSCLITE_MAX_READERS
+	* [r4405] src/pcscd.h.in: remove useless PCSCLITE_MAX_THREADS
+	  definition
+	* [r4404] src/pcscd.h.in: remove useless
+	  PCSCLITE_TRANSACTION_TIMEOUT definition
+	* [r4403] src/utils.c, src/utils.h, src/winscard.c,
+	  src/winscard_clnt.c: move time_sub() in utils.c
+	* [r4402] src/pcsc-wirecheck-gen.c, src/pcscd.h.in,
+	  src/winscard_msg.c, src/winscard_msg.h: remove useless
+	  key[PCSCLITE_MSG_KEY_LEN] field
+
+2009-09-28  Ludovic Rousseau
+
+	* [r4400] src/winscard.c: SCardTransmit(): do not limit the minimum
+	  size of an APDU to 4 bytes. non ISO 7816-4 compliant cards (like
+	  Mifare DESFIRE) may use shorter commands
+	  
+	  Thanks to Björn Kupfer for the bug report
+	* [r4399] src/winscard.c: SCardTransmit(): call IFDControl_v2
+	  instead of IFDTransmit only if dwProtocol == SCARD_PROTOCOL_RAW
+	  _and_ ifdhandler is v2.0
+	  
+	  Thanks to Björn Kupfer for the patch
+
+2009-09-23  Ludovic Rousseau
+
+	* [r4395] src/winscard_msg.c, src/winscard_msg_srv.c: use the POSIX
+	  name AF_LOCAL instead of AF_UNIX
+
+2009-09-21  Ludovic Rousseau
+
+	* [r4388] src/pcscd.h.in: remove unsuned #define
+	  PCSCLITE_RW_ATTEMPTS
+
+2009-09-17  Ludovic Rousseau
+
+	* [r4387] src/winscard_clnt.c: typo in Doxygen comment
+
+2009-09-15  Ludovic Rousseau
+
+	* [r4386] src/winscard_clnt.c: SCardReleaseContext(),
+	  SCardControl(), SCardTransmit() and SCardListReaders(): add a
+	  call to PROFILE_END() before exiting with SCARD_E_INVALID_HANDLE
+	  error code to have a better profiling output
+	* [r4385] src/winscard.c:
+	  SCardEstablishContext()/SCardReleaseContext(): log context value
+	  in hexadecimal instead of decimal
+	* [r4384] src/winscard_msg.c: rename argument blockAmount in
+	  timeOut to better reflect its function
+
+2009-09-08  Ludovic Rousseau
+
+	* [r4378] src/PCSC/reader.h.in: update sruct
+	  PIN_PROPERTIES_STRUCTURE to be conform with Revision 2.02.06,
+	  April 2009 of PCSCv2 part 10
+	  
+	  Fields wLcdMaxCharacters and wLcdMaxLines have been removed
+
+2009-09-01  Ludovic Rousseau
+
+	* [r4375] src/pcscdaemon.c: signal_reload(): reenable the signal
+	  handler. This is needed on Solaris and HPUX.
+	  
+	  Thanks to Douglas E. Engert for the patch
+	  http://archives.neohapsis.com/archives/dev/muscle/2009-q3/0061.html
+
+2009-08-31  Ludovic Rousseau
+
+	* [r4374] src/ifdwrapper.c, src/winscard.c: typo in comments
+
+2009-08-28  Ludovic Rousseau
+
+	* [r4371] src/hotplug_libhal.c, src/hotplug_libusb.c,
+	  src/hotplug_linux.c, src/pcscdaemon.c: move definition of
+	  usbNotifierMutex in the underlying layers where it is used
+
+2009-08-27  Ludovic Rousseau
+
+	* [r4367] src/ifdwrapper.c: IFDControl(): return
+	  SCARD_E_UNSUPPORTED_FEATURE if the driver returned
+	  IFD_ERROR_NOT_SUPPORTED or IFD_NOT_SUPPORTED
+	  
+	  This is used to separate an unsupported value of ControlCode from
+	  a general error
+
+2009-07-31  Ludovic Rousseau
+
+	* [r4359] UnitaryTests/control_switch_interface.py: switch
+	  interface on the GemProx DU
+	* [r4357] UnitaryTests/control_get_firmware.py: get firmware
+	  version of Gemalto readers
+
+2009-07-30  Ludovic Rousseau
+
+	* [r4354] src/ifdwrapper.c: remove extra spaces at end of line
+	* [r4353] src/configfile.l: reformat
+	* [r4352] src/configfile.l: remove extra spaces
+
 2009-07-28  Ludovic Rousseau
 
 	* [r4349] ChangeLog, configure.in: release 1.5.5

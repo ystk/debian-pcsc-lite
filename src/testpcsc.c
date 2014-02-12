@@ -3,10 +3,10 @@
  *
  * Copyright (C) 1999
  *  David Corcoran <corcoran@linuxnet.com>
- * Copyright (C) 2004-2008
+ * Copyright (C) 2004-2010
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: testpcsc.c 4328 2009-07-20 12:11:18Z rousseau $
+ * $Id: testpcsc.c 5885 2011-08-09 07:49:14Z rousseau $
  */
 
 /**
@@ -56,7 +56,7 @@ int main(/*@unused@*/ int argc, /*@unused@*/ char **argv)
 {
 	SCARDHANDLE hCard;
 	SCARDCONTEXT hContext;
-	SCARD_READERSTATE_A rgReaderStates[1];
+	SCARD_READERSTATE rgReaderStates[1];
 	DWORD dwReaderLen, dwState, dwProt, dwAtrLen;
 	DWORD dwPref, dwReaders = 0;
 	char *pcReaders = NULL, *mszReaders;
@@ -79,8 +79,8 @@ int main(/*@unused@*/ int argc, /*@unused@*/ char **argv)
 	DWORD i;
 	int p, iReader;
 	int iList[16];
-	SCARD_IO_REQUEST pioRecvPci;
-	SCARD_IO_REQUEST pioSendPci;
+	SCARD_IO_REQUEST ioRecvPci = *SCARD_PCI_T0;	/* use a default value */
+	const SCARD_IO_REQUEST *pioSendPci;
 	unsigned char bSendBuffer[MAX_BUFFER_SIZE];
 	unsigned char bRecvBuffer[MAX_BUFFER_SIZE];
 	DWORD send_length, length;
@@ -188,7 +188,7 @@ wait_for_card_again:
 
 			printf("Enter the reader number\t\t: ");
 			(void)fgets(input, sizeof(input), stdin);
-			(void)sscanf(input, "%d", &iReader);
+			iReader = atoi(input);
 
 			if (iReader > p || iReader <= 0)
 				printf("Invalid Value - try again\n");
@@ -219,13 +219,13 @@ wait_for_card_again:
 	switch(dwPref)
 	{
 		case SCARD_PROTOCOL_T0:
-			pioSendPci = *SCARD_PCI_T0;
+			pioSendPci = SCARD_PCI_T0;
 			break;
 		case SCARD_PROTOCOL_T1:
-			pioSendPci = *SCARD_PCI_T1;
+			pioSendPci = SCARD_PCI_T1;
 			break;
 		case SCARD_PROTOCOL_RAW:
-			pioSendPci = *SCARD_PCI_RAW;
+			pioSendPci = SCARD_PCI_RAW;
 			break;
 		default:
 			printf("Unknown protocol\n");
@@ -242,8 +242,8 @@ wait_for_card_again:
 	length = sizeof(bRecvBuffer);
 
 	printf("Testing SCardTransmit\t\t: ");
-	rv = SCardTransmit(hCard, &pioSendPci, bSendBuffer, send_length,
-		&pioRecvPci, bRecvBuffer, &length);
+	rv = SCardTransmit(hCard, pioSendPci, bSendBuffer, send_length,
+		&ioRecvPci, bRecvBuffer, &length);
 	test_rv(rv, hContext, PANIC);
 	printf(" card response:" GREEN);
 	for (i=0; i<length; i++)
@@ -274,6 +274,36 @@ wait_for_card_again:
 	}
 #endif
 	test_rv(rv, hContext, DONT_PANIC);
+
+	printf("Testing SCardGetAttrib\t\t: ");
+#ifdef USE_AUTOALLOCATE
+	pcbAttrLen = SCARD_AUTOALLOCATE;
+	rv = SCardGetAttrib(hCard, SCARD_ATTR_DEVICE_FRIENDLY_NAME, (unsigned char *)&pbAttr,
+		&pcbAttrLen);
+#else
+	rv = SCardGetAttrib(hCard, SCARD_ATTR_DEVICE_FRIENDLY_NAME, NULL, &pcbAttrLen);
+	test_rv(rv, hContext, DONT_PANIC);
+	if (rv == SCARD_S_SUCCESS)
+	{
+		printf("SCARD_ATTR_DEVICE_FRIENDLY_NAME length: " GREEN "%ld\n" NORMAL, pcbAttrLen);
+		pbAttr = malloc(pcbAttrLen);
+	}
+
+	printf("Testing SCardGetAttrib\t\t: ");
+	rv = SCardGetAttrib(hCard, SCARD_ATTR_DEVICE_FRIENDLY_NAME, pbAttr, &pcbAttrLen);
+#endif
+	test_rv(rv, hContext, DONT_PANIC);
+	if (rv == SCARD_S_SUCCESS)
+		printf("SCARD_ATTR_DEVICE_FRIENDLY_NAME: " GREEN "%s\n" NORMAL, pbAttr);
+
+#ifdef USE_AUTOALLOCATE
+	printf("Testing SCardFreeMemory\t\t: ");
+	rv = SCardFreeMemory(hContext, pbAttr);
+	test_rv(rv, hContext, PANIC);
+#else
+	if (pbAttr)
+		free(pbAttr);
+#endif
 
 	printf("Testing SCardGetAttrib\t\t: ");
 #ifdef USE_AUTOALLOCATE

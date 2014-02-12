@@ -3,8 +3,10 @@
  *
  * Copyright (C) 1999
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2002-2011
+ *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: wintypes.h 3334 2009-03-02 14:56:38Z rousseau $
+ * $Id: wintypes.h 5869 2011-07-09 12:04:18Z rousseau $
  */
 
 /**
@@ -20,11 +22,42 @@ extern "C"
 {
 #endif
 
+#ifdef __APPLE__
+
+#include <stdint.h>
+
+#ifndef BYTE
+    typedef uint8_t BYTE;
+#endif
+    typedef uint8_t UCHAR;
+    typedef UCHAR *PUCHAR;
+    typedef uint16_t USHORT;
+
+#ifndef __COREFOUNDATION_CFPLUGINCOM__
+    typedef uint32_t ULONG;
+    typedef void *LPVOID;
+    typedef int16_t BOOL;
+#endif
+
+    typedef ULONG *PULONG;
+    typedef const void *LPCVOID;
+    typedef uint32_t DWORD;
+    typedef DWORD *PDWORD;
+    typedef uint16_t WORD;
+    typedef int32_t LONG;
+    typedef const char *LPCSTR;
+    typedef const BYTE *LPCBYTE;
+    typedef BYTE *LPBYTE;
+    typedef DWORD *LPDWORD;
+    typedef char *LPSTR;
+
+#else
+
 #ifndef BYTE
 	typedef unsigned char BYTE;
 #endif
 	typedef unsigned char UCHAR;
-	typedef unsigned char *PUCHAR;
+	typedef UCHAR *PUCHAR;
 	typedef unsigned short USHORT;
 
 #ifndef __COREFOUNDATION_CFPLUGINCOM__
@@ -34,7 +67,7 @@ extern "C"
 
 	typedef const void *LPCVOID;
 	typedef unsigned long DWORD;
-	typedef unsigned long *PDWORD;
+	typedef DWORD *PDWORD;
 	typedef long LONG;
 	typedef const char *LPCSTR;
 	typedef const BYTE *LPCBYTE;
@@ -50,7 +83,9 @@ extern "C"
 	/* types unused by pcsc-lite */
 	typedef short BOOL;
 	typedef unsigned short WORD;
-	typedef unsigned long *PULONG;
+	typedef ULONG *PULONG;
+
+#endif
 
 #ifdef __cplusplus
 }

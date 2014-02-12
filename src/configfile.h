@@ -3,10 +3,12 @@
  *
  * MUSCLE SmartCard Development ( http://www.linuxnet.com )
  *
- * Copyright (C) 1999
+ * Copyright (C) 1999-2002
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2002-2010
+ *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: configfile.h 3260 2009-01-02 15:19:59Z rousseau $
+ * $Id: configfile.h 5047 2010-06-29 14:39:24Z rousseau $
  */
 
 #ifndef __configfile_h__
@@ -18,6 +20,9 @@ extern "C"
 #endif
 
 	int DBGetReaderList(const char *readerconf,
+		/*@out@*/ SerialReader **caller_reader_list);
+
+	int DBGetReaderListDir(const char *readerconf_dir,
 		/*@out@*/ SerialReader **caller_reader_list);
 
 #ifdef __cplusplus

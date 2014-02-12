@@ -3,10 +3,14 @@
  *
  * Copyright (C) 2002-2004
  *  Stephen M. Webb <stephenw@cryptocard.com>
+ * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
+ * Copyright (C) 2002
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2003
+ *  Antti Tapaninen
  *
- * $Id: hotplug_macosx.c 2494 2007-03-27 12:17:53Z rousseau $
+ * $Id: hotplug_macosx.c 5868 2011-07-09 11:59:09Z rousseau $
  */
 
 /**
@@ -30,12 +34,10 @@
 #include "parser.h"
 #include "readerfactory.h"
 #include "winscard_msg.h"
-#include "sys_generic.h"
+#include "utils.h"
 #include "hotplug.h"
 
 #undef DEBUG_HOTPLUG
-
-char ReCheckSerialReaders = FALSE;
 
 /*
  * An aggregation of useful information on a driver bundle in the
@@ -74,6 +76,8 @@ static void HPDeviceAppeared(void *refCon, io_iterator_t iterator)
 	kern_return_t kret;
 	io_service_t obj;
 
+	(void)refCon;
+
 	while ((obj = IOIteratorNext(iterator)))
 		kret = IOObjectRelease(obj);
 
@@ -88,6 +92,8 @@ static void HPDeviceDisappeared(void *refCon, io_iterator_t iterator)
 {
 	kern_return_t kret;
 	io_service_t obj;
+
+	(void)refCon;
 
 	while ((obj = IOIteratorNext(iterator)))
 		kret = IOObjectRelease(obj);
@@ -106,7 +112,6 @@ static void HPDeviceDisappeared(void *refCon, io_iterator_t iterator)
  */
 static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 {
-	int i;
 #ifdef DEBUG_HOTPLUG
 	Log2(PCSC_LOG_DEBUG, "Entering HPDriversGetFromDirectory: %s",
 		driverBundlePath);
@@ -139,6 +144,7 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 	CFRelease(pluginUrl);
 
 	size_t bundleArraySize = CFArrayGetCount(bundleArray);
+	size_t i;
 
 	/* get the number of readers (including aliases) */
 	for (i = 0; i < bundleArraySize; i++)
@@ -175,7 +181,7 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 	 *  and HPDriverVectorRelease:376 */
 	readersNumber++;
 
-	bundleVector = (HPDriver *) calloc(readersNumber, sizeof(HPDriver));
+	bundleVector = calloc(readersNumber, sizeof(HPDriver));
 	if (!bundleVector)
 	{
 		Log1(PCSC_LOG_ERROR, "memory allocation failure");
@@ -237,7 +243,7 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 			if (reader_nb != CFArrayGetCount(productArray))
 			{
 				Log3(PCSC_LOG_ERROR,
-					"Malformed Info.plist: %d vendors and %d products",
+					"Malformed Info.plist: %d vendors and %ld products",
 					reader_nb, CFArrayGetCount(productArray));
 				return bundleVector;
 			}
@@ -245,7 +251,7 @@ static HPDriverVector HPDriversGetFromDirectory(const char *driverBundlePath)
 			if (reader_nb != CFArrayGetCount(friendlyNameArray))
 			{
 				Log3(PCSC_LOG_ERROR,
-					"Malformed Info.plist: %d vendors and %d friendlynames",
+					"Malformed Info.plist: %d vendors and %ld friendlynames",
 					reader_nb, CFArrayGetCount(friendlyNameArray));
 				return bundleVector;
 			}
@@ -343,7 +349,7 @@ static HPDriver *HPDriverCopy(HPDriver * rhs)
 	if (!rhs)
 		return NULL;
 
-	HPDriver *newDriverBundle = (HPDriver *) calloc(1, sizeof(HPDriver));
+	HPDriver *newDriverBundle = calloc(1, sizeof(HPDriver));
 
 	if (!newDriverBundle)
 		return NULL;
@@ -390,7 +396,7 @@ static void HPDriverVectorRelease(HPDriverVector driverBundleVector)
 static HPDeviceList
 HPDeviceListInsert(HPDeviceList list, HPDriver * bundle, UInt32 address)
 {
-	HPDevice *newReader = (HPDevice *) calloc(1, sizeof(HPDevice));
+	HPDevice *newReader = calloc(1, sizeof(HPDevice));
 
 	if (!newReader)
 	{
@@ -753,12 +759,10 @@ LONG HPSearchHotPluggables(void)
 		{
 			char deviceName[MAX_DEVICENAME];
 
-			/* the format should be "usb:%04x/%04x:libusb:%s" but we do not
-			 * know the libusb string. So it is not possible to differentiate
-			 * two identical readers :-( */
-			snprintf(deviceName, sizeof(deviceName), "usb:%04x/%04x",
-				(unsigned int)a->m_driver->m_vendorId,
-				(unsigned int)a->m_driver->m_productId);
+			/* the format should be "usb:%04x/%04x" but Apple uses the
+			 * friendly name instead */
+			snprintf(deviceName, sizeof(deviceName),
+				"%s", a->m_driver->m_friendlyName);
 			deviceName[sizeof(deviceName)-1] = '\0';
 
 			RFAddReader(a->m_driver->m_friendlyName,
@@ -795,14 +799,14 @@ LONG HPSearchHotPluggables(void)
 }
 
 
-PCSCLITE_THREAD_T sHotplugWatcherThread;
+pthread_t sHotplugWatcherThread;
 
 /*
  * Sets up callbacks for device hotplug events.
  */
 ULONG HPRegisterForHotplugEvents(void)
 {
-	SYS_ThreadCreate(&sHotplugWatcherThread,
+	ThreadCreate(&sHotplugWatcherThread,
 		THREAD_ATTR_DEFAULT,
 		(PCSCLITE_THREAD_FUNCTION( )) HPDeviceNotificationThread, NULL);
 
