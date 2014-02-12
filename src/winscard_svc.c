@@ -3,10 +3,14 @@
  *
  * Copyright (C) 2001-2004
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2003-2004
  *  Damien Sauveron <damien.sauveron@labri.fr>
+ * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
+ * Copyright (C) 2009
+ *  Jean-Luc Giraud <jlgiraud@googlemail.com>
  *
- * $Id: winscard_svc.c 4334 2009-07-21 14:26:19Z rousseau $
+ * $Id: winscard_svc.c 5864 2011-07-09 11:37:48Z rousseau $
  */
 
 /**
@@ -24,6 +28,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <pthread.h>
 
 #include "pcscd.h"
 #include "winscard.h"
@@ -31,38 +38,97 @@
 #include "winscard_msg.h"
 #include "winscard_svc.h"
 #include "sys_generic.h"
-#include "thread_generic.h"
+#include "utils.h"
 #include "readerfactory.h"
+#include "eventhandler.h"
+#include "simclist.h"
 
 /**
  * @brief Represents an Application Context on the Server side.
  *
  * An Application Context contains Channels (\c hCard).
  */
-static struct _psContext
-{
-	uint32_t hContext;
-	uint32_t hCard[PCSCLITE_MAX_APPLICATION_CONTEXT_CHANNELS];
-	uint32_t dwClientID;			/**< Connection ID used to reference the Client. */
-	PCSCLITE_THREAD_T pthThread;		/**< Event polling thread's ID */
-	sharedSegmentMsg msgStruct;		/**< Msg sent by the Client */
-	int protocol_major, protocol_minor;	/**< Protocol number agreed between client and server*/
-} psContext[PCSCLITE_MAX_APPLICATIONS_CONTEXTS];
 
-static LONG MSGCheckHandleAssociation(SCARDHANDLE, DWORD);
-static LONG MSGFunctionDemarshall(psharedSegmentMsg, DWORD);
-static LONG MSGAddContext(SCARDCONTEXT, DWORD);
-static LONG MSGRemoveContext(SCARDCONTEXT, DWORD);
-static LONG MSGAddHandle(SCARDCONTEXT, SCARDHANDLE, DWORD);
-static LONG MSGRemoveHandle(SCARDHANDLE, DWORD);
-static LONG MSGCleanupClient(DWORD);
+extern char AutoExit;
+static int contextMaxThreadCounter = PCSC_MAX_CONTEXT_THREADS;
+static int contextMaxCardHandles = PCSC_MAX_CONTEXT_CARD_HANDLES;
+
+static list_t contextsList;	/**< Context tracking list */
+pthread_mutex_t contextsList_lock;	/**< lock for the above list */
+
+struct _psContext
+{
+	int32_t hContext;
+	list_t cardsList;
+	pthread_mutex_t cardsList_lock;	/**< lock for the above list */
+	uint32_t dwClientID;	/**< Connection ID used to reference the Client. */
+	pthread_t pthThread;	/**< Event polling thread's ID */
+};
+typedef struct _psContext SCONTEXT;
+
+static LONG MSGCheckHandleAssociation(SCARDHANDLE, SCONTEXT *);
+static LONG MSGAddContext(SCARDCONTEXT, SCONTEXT *);
+static LONG MSGRemoveContext(SCARDCONTEXT, SCONTEXT *);
+static LONG MSGAddHandle(SCARDCONTEXT, SCARDHANDLE, SCONTEXT *);
+static LONG MSGRemoveHandle(SCARDHANDLE, SCONTEXT *);
+static LONG MSGCleanupClient(SCONTEXT *);
 
 static void ContextThread(LPVOID pdwIndex);
 
-LONG ContextsInitialize(void)
+extern READER_STATE readerStates[PCSCLITE_MAX_READERS_CONTEXTS];
+
+static int contextsListhContext_seeker(const void *el, const void *key)
 {
-	memset(psContext, 0, sizeof(struct _psContext)*PCSCLITE_MAX_APPLICATIONS_CONTEXTS);
+	const SCONTEXT * currentContext = (SCONTEXT *)el;
+
+	if ((el == NULL) || (key == NULL))
+	{
+		Log3(PCSC_LOG_CRITICAL, "called with NULL pointer: el=%p, key=%p",
+			el, key);
+		return 0;
+	}
+
+	if (currentContext->hContext == *(int32_t *)key)
+		return 1;
+	return 0;
+}
+
+LONG ContextsInitialize(int customMaxThreadCounter,
+	int customMaxThreadCardHandles)
+{
+	int lrv = 0;
+
+	if (customMaxThreadCounter != 0)
+		contextMaxThreadCounter = customMaxThreadCounter;
+
+	if (customMaxThreadCardHandles != 0)
+		contextMaxCardHandles = customMaxThreadCardHandles;
+
+	lrv = list_init(&contextsList);
+	if (lrv < 0)
+	{
+		Log2(PCSC_LOG_CRITICAL, "list_init failed with return value: %d", lrv);
+		return -1;
+	}
+	lrv = list_attributes_seeker(& contextsList, contextsListhContext_seeker);
+	if (lrv < 0)
+	{
+		Log2(PCSC_LOG_CRITICAL,
+			"list_attributes_seeker failed with return value: %d", lrv);
+		return -1;
+	}
+
+	(void)pthread_mutex_init(&contextsList_lock, NULL);
+
 	return 1;
+}
+
+void ContextsDeinitialize(void)
+{
+	int listSize;
+	listSize = list_size(&contextsList);
+	Log2(PCSC_LOG_DEBUG, "remaining threads: %d", listSize);
+	/* This is currently a no-op. It should terminate the threads properly. */
 }
 
 /**
@@ -77,37 +143,98 @@ LONG ContextsInitialize(void)
  */
 LONG CreateContextThread(uint32_t *pdwClientID)
 {
-	long i;
 	int rv;
+	int lrv;
+	int listSize;
+	SCONTEXT * newContext = NULL;
 
-	for (i = 0; i < PCSCLITE_MAX_APPLICATIONS_CONTEXTS; i++)
+	(void)pthread_mutex_lock(&contextsList_lock);
+	listSize = list_size(&contextsList);
+	(void)pthread_mutex_unlock(&contextsList_lock);
+
+	if (listSize >= contextMaxThreadCounter)
 	{
-		if (psContext[i].dwClientID == 0)
-		{
-			psContext[i].dwClientID = *pdwClientID;
-			*pdwClientID = 0;
-			break;
-		}
+		Log2(PCSC_LOG_CRITICAL, "Too many context running: %d", listSize);
+		goto error;
 	}
 
-	if (i == PCSCLITE_MAX_APPLICATIONS_CONTEXTS)
+	/* Create the context for this thread. */
+	newContext = malloc(sizeof(*newContext));
+	if (NULL == newContext)
 	{
-		Log2(PCSC_LOG_CRITICAL, "No more context available (max: %d)",
-			PCSCLITE_MAX_APPLICATIONS_CONTEXTS);
-		return SCARD_F_INTERNAL_ERROR;
+		Log1(PCSC_LOG_CRITICAL, "Could not allocate new context");
+		goto error;
+	}
+	memset(newContext, 0, sizeof(*newContext));
+
+	newContext->dwClientID = *pdwClientID;
+
+	/* Initialise the list of card contexts */
+	lrv = list_init(&(newContext->cardsList));
+	if (lrv < 0)
+	{
+		Log2(PCSC_LOG_CRITICAL, "list_init failed with return value: %d", lrv);
+		goto error;
 	}
 
-	rv = SYS_ThreadCreate(&psContext[i].pthThread, THREAD_ATTR_DETACHED,
-		(PCSCLITE_THREAD_FUNCTION( )) ContextThread, (LPVOID) i);
+	/* request to store copies, and provide the metric function */
+	list_attributes_copy(&(newContext->cardsList), list_meter_int32_t, 1);
+
+	/* Adding a comparator
+	 * The stored type is SCARDHANDLE (long) but has only 32 bits
+	 * usefull even on a 64-bit CPU since the API between pcscd and
+	 * libpcscliter uses "int32_t hCard;"
+	 */
+	lrv = list_attributes_comparator(&(newContext->cardsList),
+		list_comparator_int32_t);
+	if (lrv != 0)
+	{
+		Log2(PCSC_LOG_CRITICAL,
+			"list_attributes_comparator failed with return value: %d", lrv);
+		list_destroy(&(newContext->cardsList));
+		goto error;
+	}
+
+	(void)pthread_mutex_init(&newContext->cardsList_lock, NULL);
+
+	(void)pthread_mutex_lock(&contextsList_lock);
+	lrv = list_append(&contextsList, newContext);
+	(void)pthread_mutex_unlock(&contextsList_lock);
+	if (lrv < 0)
+	{
+		Log2(PCSC_LOG_CRITICAL, "list_append failed with return value: %d",
+			lrv);
+		list_destroy(&(newContext->cardsList));
+		goto error;
+	}
+
+	rv = ThreadCreate(&(newContext->pthThread), THREAD_ATTR_DETACHED,
+		(PCSCLITE_THREAD_FUNCTION( )) ContextThread, (LPVOID) newContext);
 	if (rv)
 	{
-		(void)SYS_CloseFile(psContext[i].dwClientID);
-		psContext[i].dwClientID = 0;
-		Log2(PCSC_LOG_CRITICAL, "SYS_ThreadCreate failed: %s", strerror(rv));
-		return SCARD_E_NO_MEMORY;
+		int lrv2;
+
+		Log2(PCSC_LOG_CRITICAL, "ThreadCreate failed: %s", strerror(rv));
+		(void)pthread_mutex_lock(&contextsList_lock);
+		lrv2 = list_delete(&contextsList, newContext);
+		(void)pthread_mutex_unlock(&contextsList_lock);
+		if (lrv2 < 0)
+			Log2(PCSC_LOG_CRITICAL, "list_delete failed with error %d", lrv2);
+		list_destroy(&(newContext->cardsList));
+		goto error;
 	}
 
+	/* disable any suicide alarm */
+	if (AutoExit)
+		alarm(0);
+
 	return SCARD_S_SUCCESS;
+
+error:
+	if (newContext)
+		free(newContext);
+	(void)close(*pdwClientID);
+	return SCARD_E_NO_MEMORY;
 }
 
 /*
@@ -121,696 +248,648 @@ LONG CreateContextThread(uint32_t *pdwClientID)
  * For each Client message a new instance of this thread is created.
  *
  * @param[in] dwIndex Index of an avaiable Application Context slot in
- * \c psContext.
+ * \c SCONTEXT *.
  */
-static void ContextThread(LPVOID dwIndex)
-{
-	LONG rv;
-	sharedSegmentMsg msgStruct;
-	DWORD dwContextIndex = (DWORD)dwIndex;
+#ifndef NO_LOG
+static const char *CommandsText[] = {
+	"NULL",
+	"ESTABLISH_CONTEXT",	/* 0x01 */
+	"RELEASE_CONTEXT",
+	"LIST_READERS",
+	"CONNECT",
+	"RECONNECT",			/* 0x05 */
+	"DISCONNECT",
+	"BEGIN_TRANSACTION",
+	"END_TRANSACTION",
+	"TRANSMIT",
+	"CONTROL",				/* 0x0A */
+	"STATUS",
+	"GET_STATUS_CHANGE",
+	"CANCEL",
+	"CANCEL_TRANSACTION",
+	"GET_ATTRIB",			/* 0x0F */
+	"SET_ATTRIB",
+	"CMD_VERSION",
+	"CMD_GET_READERS_STATE",
+	"CMD_WAIT_READER_STATE_CHANGE",
+	"CMD_STOP_WAITING_READER_STATE_CHANGE",	/* 0x14 */
+	"NULL"
+};
+#endif
 
-	Log2(PCSC_LOG_DEBUG, "Thread is started: %d",
-		psContext[dwContextIndex].dwClientID);
+#define READ_BODY(v) \
+	if (header.size != sizeof(v)) { goto wrong_length; } \
+	ret = MessageReceive(&v, sizeof(v), filedes); \
+	if (ret != SCARD_S_SUCCESS) { Log2(PCSC_LOG_DEBUG, "Client die: %d", filedes); goto exit; }
+
+#define WRITE_BODY(v) \
+	WRITE_BODY_WITH_COMMAND(CommandsText[header.command], v)
+#define WRITE_BODY_WITH_COMMAND(command, v) \
+	Log4(PCSC_LOG_DEBUG, "%s rv=0x%X for client %d", command, v.rv, filedes); \
+	ret = MessageSend(&v, sizeof(v), filedes);
+
+static void ContextThread(LPVOID newContext)
+{
+	SCONTEXT * threadContext = (SCONTEXT *) newContext;
+	int32_t filedes = threadContext->dwClientID;
+
+	Log3(PCSC_LOG_DEBUG, "Thread is started: dwClientID=%d, threadContext @%p",
+		threadContext->dwClientID, threadContext);
 
 	while (1)
 	{
-		switch (rv = SHMProcessEventsContext(psContext[dwContextIndex].dwClientID, &msgStruct))
+		struct rxHeader header;
+		int32_t ret = MessageReceive(&header, sizeof(header), filedes);
+
+		if (ret != SCARD_S_SUCCESS)
 		{
-		case 0:
-			if (msgStruct.mtype == CMD_CLIENT_DIED)
+			/* Clean up the dead client */
+			Log2(PCSC_LOG_DEBUG, "Client die: %d", filedes);
+			EHTryToUnregisterClientForEvent(filedes);
+			goto exit;
+		}
+
+		if ((header.command > CMD_ENUM_FIRST)
+			&& (header.command < CMD_ENUM_LAST))
+			Log3(PCSC_LOG_DEBUG, "Received command: %s from client %d",
+				CommandsText[header.command], filedes);
+
+		switch (header.command)
+		{
+			/* pcsc-lite client/server protocol version */
+			case CMD_VERSION:
 			{
-				/*
-				 * Clean up the dead client
-				 */
-				Log2(PCSC_LOG_DEBUG, "Client die: %d",
-					psContext[dwContextIndex].dwClientID);
-				(void)MSGCleanupClient(dwContextIndex);
-				(void)SYS_ThreadExit((LPVOID) NULL);
+				struct version_struct veStr;
+
+				READ_BODY(veStr)
+
+				Log3(PCSC_LOG_DEBUG, "Client is protocol version %d:%d",
+					veStr.major, veStr.minor);
+
+				veStr.rv = SCARD_S_SUCCESS;
+
+				/* client and server use different protocol */
+				if ((veStr.major != PROTOCOL_VERSION_MAJOR)
+					|| (veStr.minor != PROTOCOL_VERSION_MINOR))
+				{
+					Log3(PCSC_LOG_CRITICAL, "Client protocol is %d:%d",
+						veStr.major, veStr.minor);
+					Log3(PCSC_LOG_CRITICAL, "Server protocol is %d:%d",
+						PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
+					veStr.rv = SCARD_E_NO_SERVICE;
+				}
+
+				/* set the server protocol version */
+				veStr.major = PROTOCOL_VERSION_MAJOR;
+				veStr.minor = PROTOCOL_VERSION_MINOR;
+
+				/* send back the response */
+				WRITE_BODY(veStr)
 			}
 			break;
 
-		case 1:
-			if (msgStruct.mtype == CMD_FUNCTION)
+			case CMD_GET_READERS_STATE:
 			{
-				/*
-				 * Command must be found
-				 */
-				rv = MSGFunctionDemarshall(&msgStruct, dwContextIndex);
-				if (rv)
-				{
-					Log2(PCSC_LOG_DEBUG, "MSGFunctionDemarshall failed: %d",
-						rv);
-					(void)SHMClientCloseSession(psContext[dwContextIndex].dwClientID);
-					(void)MSGCleanupClient(dwContextIndex);
-					(void)SYS_ThreadExit((LPVOID) NULL);
-				}
+				/* nothing to read */
 
-				/* the SCARD_TRANSMIT_EXTENDED anwser is already sent by
-				 * MSGFunctionDemarshall */
-				if ((msgStruct.command != SCARD_TRANSMIT_EXTENDED)
-					&& (msgStruct.command != SCARD_CONTROL_EXTENDED))
-					rv = SHMMessageSend(&msgStruct, sizeof(msgStruct),
-						psContext[dwContextIndex].dwClientID,
-						PCSCLITE_SERVER_ATTEMPTS);
+#ifdef USE_USB
+				/* wait until all readers are ready */
+				RFWaitForReaderInit();
+#endif
+
+				/* dump the readers state */
+				ret = MessageSend(readerStates, sizeof(readerStates), filedes);
 			}
-			else
-				/* pcsc-lite client/server protocol version */
-				if (msgStruct.mtype == CMD_VERSION)
+			break;
+
+			case CMD_WAIT_READER_STATE_CHANGE:
+			{
+				struct wait_reader_state_change waStr;
+
+				READ_BODY(waStr)
+
+				/* add the client fd to the list */
+				EHRegisterClientForEvent(filedes);
+
+				/* We do not send anything here.
+				 * Either the client will timeout or the server will
+				 * answer if an event occurs */
+			}
+			break;
+
+			case CMD_STOP_WAITING_READER_STATE_CHANGE:
+			{
+				struct wait_reader_state_change waStr;
+
+				READ_BODY(waStr)
+
+				/* add the client fd to the list */
+				waStr.rv = EHUnregisterClientForEvent(filedes);
+
+				WRITE_BODY(waStr)
+			}
+			break;
+
+			case SCARD_ESTABLISH_CONTEXT:
+			{
+				struct establish_struct esStr;
+				SCARDCONTEXT hContext;
+
+				READ_BODY(esStr)
+
+				hContext = esStr.hContext;
+				esStr.rv = SCardEstablishContext(esStr.dwScope, 0, 0,
+					&hContext);
+				esStr.hContext = hContext;
+
+				if (esStr.rv == SCARD_S_SUCCESS)
+					esStr.rv = MSGAddContext(esStr.hContext, threadContext);
+
+				WRITE_BODY(esStr)
+			}
+			break;
+
+			case SCARD_RELEASE_CONTEXT:
+			{
+				struct release_struct reStr;
+
+				READ_BODY(reStr)
+
+				reStr.rv = SCardReleaseContext(reStr.hContext);
+
+				if (reStr.rv == SCARD_S_SUCCESS)
+					reStr.rv = MSGRemoveContext(reStr.hContext, threadContext);
+
+				WRITE_BODY(reStr)
+			}
+			break;
+
+			case SCARD_CONNECT:
+			{
+				struct connect_struct coStr;
+				SCARDHANDLE hCard;
+				DWORD dwActiveProtocol;
+
+				READ_BODY(coStr)
+
+				hCard = coStr.hCard;
+				dwActiveProtocol = coStr.dwActiveProtocol;
+
+				coStr.rv = SCardConnect(coStr.hContext, coStr.szReader,
+					coStr.dwShareMode, coStr.dwPreferredProtocols,
+					&hCard, &dwActiveProtocol);
+
+				coStr.hCard = hCard;
+				coStr.dwActiveProtocol = dwActiveProtocol;
+
+				if (coStr.rv == SCARD_S_SUCCESS)
+					coStr.rv = MSGAddHandle(coStr.hContext, coStr.hCard,
+						threadContext);
+
+				WRITE_BODY(coStr)
+			}
+			break;
+
+			case SCARD_RECONNECT:
+			{
+				struct reconnect_struct rcStr;
+				DWORD dwActiveProtocol;
+
+				READ_BODY(rcStr)
+
+				if (MSGCheckHandleAssociation(rcStr.hCard, threadContext))
+					goto exit;
+
+				rcStr.rv = SCardReconnect(rcStr.hCard, rcStr.dwShareMode,
+					rcStr.dwPreferredProtocols, rcStr.dwInitialization,
+					&dwActiveProtocol);
+				rcStr.dwActiveProtocol = dwActiveProtocol;
+
+				WRITE_BODY(rcStr)
+			}
+			break;
+
+			case SCARD_DISCONNECT:
+			{
+				struct disconnect_struct diStr;
+
+				READ_BODY(diStr)
+
+				if (MSGCheckHandleAssociation(diStr.hCard, threadContext))
+					goto exit;
+
+				diStr.rv = SCardDisconnect(diStr.hCard, diStr.dwDisposition);
+
+				if (SCARD_S_SUCCESS == diStr.rv)
+					diStr.rv = MSGRemoveHandle(diStr.hCard, threadContext);
+
+				WRITE_BODY(diStr)
+			}
+			break;
+
+			case SCARD_BEGIN_TRANSACTION:
+			{
+				struct begin_struct beStr;
+
+				READ_BODY(beStr)
+
+				if (MSGCheckHandleAssociation(beStr.hCard, threadContext))
+					goto exit;
+
+				beStr.rv = SCardBeginTransaction(beStr.hCard);
+
+				WRITE_BODY(beStr)
+			}
+			break;
+
+			case SCARD_END_TRANSACTION:
+			{
+				struct end_struct enStr;
+
+				READ_BODY(enStr)
+
+				if (MSGCheckHandleAssociation(enStr.hCard, threadContext))
+					goto exit;
+
+				enStr.rv = SCardEndTransaction(enStr.hCard,
+					enStr.dwDisposition);
+
+				WRITE_BODY(enStr)
+			}
+			break;
+
+			case SCARD_CANCEL:
+			{
+				struct cancel_struct caStr;
+				SCONTEXT * psTargetContext = NULL;
+				READ_BODY(caStr)
+
+				/* find the client */
+				(void)pthread_mutex_lock(&contextsList_lock);
+				psTargetContext = (SCONTEXT *) list_seek(&contextsList,
+					&(caStr.hContext));
+				(void)pthread_mutex_unlock(&contextsList_lock);
+				if (psTargetContext != NULL)
 				{
-					version_struct *veStr;
-					veStr = &msgStruct.veStr;
-
-					/* get the client protocol version */
-					psContext[dwContextIndex].protocol_major = veStr->major;
-					psContext[dwContextIndex].protocol_minor = veStr->minor;
-
-					Log3(PCSC_LOG_DEBUG,
-						"Client is protocol version %d:%d",
-						veStr->major, veStr->minor);
-
-					veStr->rv = SCARD_S_SUCCESS;
-
-					/* client is newer than server */
-					if ((veStr->major > PROTOCOL_VERSION_MAJOR)
-						|| (veStr->major == PROTOCOL_VERSION_MAJOR
-							&& veStr->minor > PROTOCOL_VERSION_MINOR))
-					{
-						Log3(PCSC_LOG_CRITICAL,
-							"Client protocol is too new %d:%d",
-							veStr->major, veStr->minor);
-						Log3(PCSC_LOG_CRITICAL,
-							"Server protocol is %d:%d",
-							PROTOCOL_VERSION_MAJOR, PROTOCOL_VERSION_MINOR);
-						veStr->rv = SCARD_E_NO_SERVICE;
-					}
-
-					/* set the server protocol version */
-					veStr->major = PROTOCOL_VERSION_MAJOR;
-					veStr->minor = PROTOCOL_VERSION_MINOR;
-
-					/* send back the response */
-					rv = SHMMessageSend(&msgStruct, sizeof(msgStruct),
-						psContext[dwContextIndex].dwClientID,
-					    PCSCLITE_SERVER_ATTEMPTS);
+					uint32_t fd = psTargetContext->dwClientID;
+					caStr.rv = MSGSignalClient(fd, SCARD_E_CANCELLED);
 				}
 				else
-					continue;
+					caStr.rv = SCARD_E_INVALID_HANDLE;
 
+				WRITE_BODY(caStr)
+			}
 			break;
 
-		case 2:
-			/*
-			 * timeout in SHMProcessEventsContext(): do nothing
-			 * this is used to catch the Ctrl-C signal at some time when
-			 * nothing else happens
-			 */
+			case SCARD_STATUS:
+			{
+				struct status_struct stStr;
+
+				READ_BODY(stStr)
+
+				if (MSGCheckHandleAssociation(stStr.hCard, threadContext))
+					goto exit;
+
+				/* only hCard and return value are used by the client */
+				stStr.rv = SCardStatus(stStr.hCard, NULL, NULL, NULL,
+					NULL, 0, NULL);
+
+				WRITE_BODY(stStr)
+			}
 			break;
 
-		case -1:
-			Log1(PCSC_LOG_ERROR, "Error in SHMProcessEventsContext");
+			case SCARD_TRANSMIT:
+			{
+				struct transmit_struct trStr;
+				unsigned char pbSendBuffer[MAX_BUFFER_SIZE_EXTENDED];
+				unsigned char pbRecvBuffer[MAX_BUFFER_SIZE_EXTENDED];
+				SCARD_IO_REQUEST ioSendPci;
+				SCARD_IO_REQUEST ioRecvPci;
+				DWORD cbRecvLength;
+
+				READ_BODY(trStr)
+
+				if (MSGCheckHandleAssociation(trStr.hCard, threadContext))
+					goto exit;
+
+				/* avoids buffer overflow */
+				if ((trStr.pcbRecvLength > sizeof(pbRecvBuffer))
+					|| (trStr.cbSendLength > sizeof(pbSendBuffer)))
+					goto buffer_overflow;
+
+				/* read sent buffer */
+				ret = MessageReceive(pbSendBuffer, trStr.cbSendLength, filedes);
+				if (ret != SCARD_S_SUCCESS)
+				{
+					Log2(PCSC_LOG_DEBUG, "Client die: %d", filedes);
+					goto exit;
+				}
+
+				ioSendPci.dwProtocol = trStr.ioSendPciProtocol;
+				ioSendPci.cbPciLength = trStr.ioSendPciLength;
+				ioRecvPci.dwProtocol = trStr.ioRecvPciProtocol;
+				ioRecvPci.cbPciLength = trStr.ioRecvPciLength;
+				cbRecvLength = trStr.pcbRecvLength;
+
+				trStr.rv = SCardTransmit(trStr.hCard, &ioSendPci,
+					pbSendBuffer, trStr.cbSendLength, &ioRecvPci,
+					pbRecvBuffer, &cbRecvLength);
+
+				trStr.ioSendPciProtocol = ioSendPci.dwProtocol;
+				trStr.ioSendPciLength = ioSendPci.cbPciLength;
+				trStr.ioRecvPciProtocol = ioRecvPci.dwProtocol;
+				trStr.ioRecvPciLength = ioRecvPci.cbPciLength;
+				trStr.pcbRecvLength = cbRecvLength;
+
+				WRITE_BODY(trStr)
+
+				/* write received buffer */
+				if (SCARD_S_SUCCESS == trStr.rv)
+					ret = MessageSend(pbRecvBuffer, cbRecvLength, filedes);
+			}
 			break;
 
-		default:
-			Log2(PCSC_LOG_ERROR,
-				"SHMProcessEventsContext unknown retval: %d", rv);
+			case SCARD_CONTROL:
+			{
+				struct control_struct ctStr;
+				unsigned char pbSendBuffer[MAX_BUFFER_SIZE_EXTENDED];
+				unsigned char pbRecvBuffer[MAX_BUFFER_SIZE_EXTENDED];
+				DWORD dwBytesReturned;
+
+				READ_BODY(ctStr)
+
+				if (MSGCheckHandleAssociation(ctStr.hCard, threadContext))
+					goto exit;
+
+				/* avoids buffer overflow */
+				if ((ctStr.cbRecvLength > sizeof(pbRecvBuffer))
+					|| (ctStr.cbSendLength > sizeof(pbSendBuffer)))
+				{
+					goto buffer_overflow;
+				}
+
+				/* read sent buffer */
+				ret = MessageReceive(pbSendBuffer, ctStr.cbSendLength, filedes);
+				if (ret != SCARD_S_SUCCESS)
+				{
+					Log2(PCSC_LOG_DEBUG, "Client die: %d", filedes);
+					goto exit;
+				}
+
+				dwBytesReturned = ctStr.dwBytesReturned;
+
+				ctStr.rv = SCardControl(ctStr.hCard, ctStr.dwControlCode,
+					pbSendBuffer, ctStr.cbSendLength,
+					pbRecvBuffer, ctStr.cbRecvLength,
+					&dwBytesReturned);
+
+				ctStr.dwBytesReturned = dwBytesReturned;
+
+				WRITE_BODY(ctStr)
+
+				/* write received buffer */
+				if (SCARD_S_SUCCESS == ctStr.rv)
+					ret = MessageSend(pbRecvBuffer, dwBytesReturned, filedes);
+			}
 			break;
+
+			case SCARD_GET_ATTRIB:
+			{
+				struct getset_struct gsStr;
+				DWORD cbAttrLen;
+
+				READ_BODY(gsStr)
+
+				if (MSGCheckHandleAssociation(gsStr.hCard, threadContext))
+					goto exit;
+
+				/* avoids buffer overflow */
+				if (gsStr.cbAttrLen > sizeof(gsStr.pbAttr))
+					goto buffer_overflow;
+
+				cbAttrLen = gsStr.cbAttrLen;
+
+				gsStr.rv = SCardGetAttrib(gsStr.hCard, gsStr.dwAttrId,
+					gsStr.pbAttr, &cbAttrLen);
+
+				gsStr.cbAttrLen = cbAttrLen;
+
+				WRITE_BODY(gsStr)
+			}
+			break;
+
+			case SCARD_SET_ATTRIB:
+			{
+				struct getset_struct gsStr;
+
+				READ_BODY(gsStr)
+
+				if (MSGCheckHandleAssociation(gsStr.hCard, threadContext))
+					goto exit;
+
+				/* avoids buffer overflow */
+				if (gsStr.cbAttrLen > sizeof(gsStr.pbAttr))
+					goto buffer_overflow;
+
+				gsStr.rv = SCardSetAttrib(gsStr.hCard, gsStr.dwAttrId,
+					gsStr.pbAttr, gsStr.cbAttrLen);
+
+				WRITE_BODY(gsStr)
+			}
+			break;
+
+			default:
+				Log2(PCSC_LOG_CRITICAL, "Unknown command: %d", header.command);
+				goto exit;
+		}
+
+		/* MessageSend() failed */
+		if (ret != SCARD_S_SUCCESS)
+		{
+			/* Clean up the dead client */
+			Log2(PCSC_LOG_DEBUG, "Client die: %d", filedes);
+			goto exit;
 		}
 	}
+
+buffer_overflow:
+	Log2(PCSC_LOG_DEBUG, "Buffer overflow detected: %d", filedes);
+	goto exit;
+wrong_length:
+	Log2(PCSC_LOG_DEBUG, "Wrong length: %d", filedes);
+exit:
+	(void)close(filedes);
+	(void)MSGCleanupClient(threadContext);
+	(void)pthread_exit((LPVOID) NULL);
 }
 
-/**
- * @brief Find out which message was sent by the Client and execute the right task.
- *
- * According to the command type sent by the client (\c pcsc_msg_commands),
- * cast the message data to the correct struct so that is can be demarshalled.
- * Then call the appropriate function to handle the request.
- *
- * Possible structs are: \c establish_struct \c release_struct
- * \c connect_struct \c reconnect_struct \c disconnect_struct \c begin_struct
- * \c cancel_struct \c end_struct \c status_struct \c transmit_struct
- * \c control_struct \c getset_struct.
- *
- * @param[in] msgStruct Message to be demarshalled and executed.
- * @param[in] dwContextIndex
- */
-static LONG MSGFunctionDemarshall(psharedSegmentMsg msgStruct,
-	DWORD dwContextIndex)
+LONG MSGSignalClient(uint32_t filedes, LONG rv)
 {
-	LONG rv;
-	establish_struct *esStr;
-	release_struct *reStr;
-	connect_struct *coStr;
-	reconnect_struct *rcStr;
-	disconnect_struct *diStr;
-	begin_struct *beStr;
-	cancel_struct *caStr;
-	end_struct *enStr;
-	status_struct *stStr;
-	transmit_struct *trStr;
-	control_struct *ctStr;
-	getset_struct *gsStr;
+	uint32_t ret;
+	struct wait_reader_state_change waStr;
 
-	SCARDCONTEXT hContext;
-	SCARDHANDLE hCard;
-	DWORD dwActiveProtocol;
+	Log2(PCSC_LOG_DEBUG, "Signal client: %d", filedes);
 
-	DWORD cchReaderLen;
-	DWORD dwState;
-	DWORD dwProtocol;
-	DWORD cbAtrLen;
-	DWORD cbRecvLength;
-	DWORD dwBytesReturned;
-	DWORD cbAttrLen;
+	waStr.rv = rv;
+	WRITE_BODY_WITH_COMMAND("SIGNAL", waStr)
 
-	SCARD_IO_REQUEST ioSendPci;
-	SCARD_IO_REQUEST ioRecvPci;
+	return ret;
+} /* MSGSignalClient */
 
-	/*
-	 * Zero out everything
-	 */
-	rv = 0;
-	switch (msgStruct->command)
-	{
-
-	case SCARD_ESTABLISH_CONTEXT:
-		esStr = ((establish_struct *) msgStruct->data);
-
-		hContext = esStr->hContext;
-		esStr->rv = SCardEstablishContext(esStr->dwScope, 0, 0, &hContext);
-		esStr->hContext = hContext;
-
-		if (esStr->rv == SCARD_S_SUCCESS)
-			esStr->rv =
-				MSGAddContext(esStr->hContext, dwContextIndex);
-		break;
-
-	case SCARD_RELEASE_CONTEXT:
-		reStr = ((release_struct *) msgStruct->data);
-		reStr->rv = SCardReleaseContext(reStr->hContext);
-
-		if (reStr->rv == SCARD_S_SUCCESS)
-			reStr->rv =
-				MSGRemoveContext(reStr->hContext, dwContextIndex);
-
-		break;
-
-	case SCARD_CONNECT:
-		coStr = ((connect_struct *) msgStruct->data);
-
-		hCard = coStr->hCard;
-		dwActiveProtocol = coStr->dwActiveProtocol;
-
-		coStr->rv = SCardConnect(coStr->hContext, coStr->szReader,
-			coStr->dwShareMode, coStr->dwPreferredProtocols,
-			&hCard, &dwActiveProtocol);
-
-		coStr->hCard = hCard;
-		coStr->dwActiveProtocol = dwActiveProtocol;
-
-		if (coStr->rv == SCARD_S_SUCCESS)
-			coStr->rv =
-				MSGAddHandle(coStr->hContext, coStr->hCard, dwContextIndex);
-
-		break;
-
-	case SCARD_RECONNECT:
-		rcStr = ((reconnect_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(rcStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-
-		rcStr->rv = SCardReconnect(rcStr->hCard, rcStr->dwShareMode,
-			rcStr->dwPreferredProtocols,
-			rcStr->dwInitialization, &dwActiveProtocol);
-		rcStr->dwActiveProtocol = dwActiveProtocol;
-		break;
-
-	case SCARD_DISCONNECT:
-		diStr = ((disconnect_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(diStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-		diStr->rv = SCardDisconnect(diStr->hCard, diStr->dwDisposition);
-
-		if (diStr->rv == SCARD_S_SUCCESS)
-			diStr->rv =
-				MSGRemoveHandle(diStr->hCard, dwContextIndex);
-		break;
-
-	case SCARD_BEGIN_TRANSACTION:
-		beStr = ((begin_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(beStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-		beStr->rv = SCardBeginTransaction(beStr->hCard);
-		break;
-
-	case SCARD_END_TRANSACTION:
-		enStr = ((end_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(enStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-		enStr->rv =
-			SCardEndTransaction(enStr->hCard, enStr->dwDisposition);
-		break;
-
-	case SCARD_CANCEL_TRANSACTION:
-		caStr = ((cancel_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(caStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-		caStr->rv = SCardCancelTransaction(caStr->hCard);
-		break;
-
-	case SCARD_STATUS:
-		stStr = ((status_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(stStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-
-		cchReaderLen = stStr->pcchReaderLen;
-		dwState = stStr->dwState;
-		dwProtocol = stStr->dwProtocol;
-		cbAtrLen = stStr->pcbAtrLen;
-
-		/* avoids buffer overflow */
-		if ((cchReaderLen > sizeof(stStr->mszReaderNames))
-			|| (cbAtrLen > sizeof(stStr->pbAtr)))
-		{
-			stStr->rv = SCARD_E_INSUFFICIENT_BUFFER ;
-			break;
-		}
-
-		stStr->rv = SCardStatus(stStr->hCard, stStr->mszReaderNames,
-			&cchReaderLen, &dwState,
-			&dwProtocol, stStr->pbAtr, &cbAtrLen);
-
-		stStr->pcchReaderLen = cchReaderLen;
-		stStr->dwState = dwState;
-		stStr->dwProtocol = dwProtocol;
-		stStr->pcbAtrLen = cbAtrLen;
-		break;
-
-	case SCARD_TRANSMIT:
-		trStr = ((transmit_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(trStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-
-		/* avoids buffer overflow */
-		if ((trStr->pcbRecvLength > sizeof(trStr->pbRecvBuffer))
-			|| (trStr->cbSendLength > sizeof(trStr->pbSendBuffer)))
-		{
-			trStr->rv = SCARD_E_INSUFFICIENT_BUFFER ;
-			break;
-		}
-
-		ioSendPci.dwProtocol = trStr->ioSendPciProtocol;
-		ioSendPci.cbPciLength = trStr->ioSendPciLength;
-		ioRecvPci.dwProtocol = trStr->ioRecvPciProtocol;
-		ioRecvPci.cbPciLength = trStr->ioRecvPciLength;
-		cbRecvLength = trStr->pcbRecvLength;
-
-		trStr->rv = SCardTransmit(trStr->hCard, &ioSendPci,
-			trStr->pbSendBuffer, trStr->cbSendLength,
-			&ioRecvPci, trStr->pbRecvBuffer,
-			&cbRecvLength);
-
-		trStr->ioSendPciProtocol = ioSendPci.dwProtocol;
-		trStr->ioSendPciLength = ioSendPci.cbPciLength;
-		trStr->ioRecvPciProtocol = ioRecvPci.dwProtocol;
-		trStr->ioRecvPciLength = ioRecvPci.cbPciLength;
-		trStr->pcbRecvLength = cbRecvLength;
-
-		break;
-
-	case SCARD_CONTROL:
-		ctStr = ((control_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(ctStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-
-		/* avoids buffer overflow */
-		if ((ctStr->cbRecvLength > sizeof(ctStr->pbRecvBuffer))
-			|| (ctStr->cbSendLength > sizeof(ctStr->pbSendBuffer)))
-		{
-			ctStr->rv = SCARD_E_INSUFFICIENT_BUFFER;
-			break;
-		}
-
-		dwBytesReturned = ctStr->dwBytesReturned;
-
-		ctStr->rv = SCardControl(ctStr->hCard, ctStr->dwControlCode,
-			ctStr->pbSendBuffer, ctStr->cbSendLength,
-			ctStr->pbRecvBuffer, ctStr->cbRecvLength,
-			&dwBytesReturned);
-
-		ctStr->dwBytesReturned = dwBytesReturned;
-
-		break;
-
-	case SCARD_GET_ATTRIB:
-		gsStr = ((getset_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(gsStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-
-		/* avoids buffer overflow */
-		if (gsStr->cbAttrLen > sizeof(gsStr->pbAttr))
-		{
-			gsStr->rv = SCARD_E_INSUFFICIENT_BUFFER ;
-			break;
-		}
-
-		cbAttrLen = gsStr->cbAttrLen;
-
-		gsStr->rv = SCardGetAttrib(gsStr->hCard, gsStr->dwAttrId,
-			gsStr->pbAttr, &cbAttrLen);
-
-		gsStr->cbAttrLen = cbAttrLen;
-
-		break;
-
-	case SCARD_SET_ATTRIB:
-		gsStr = ((getset_struct *) msgStruct->data);
-		rv = MSGCheckHandleAssociation(gsStr->hCard, dwContextIndex);
-		if (rv != 0) return rv;
-
-		/* avoids buffer overflow */
-		if (gsStr->cbAttrLen <= sizeof(gsStr->pbAttr))
-		{
-			gsStr->rv = SCARD_E_INSUFFICIENT_BUFFER ;
-			break;
-		}
-
-		gsStr->rv = SCardSetAttrib(gsStr->hCard, gsStr->dwAttrId,
-			gsStr->pbAttr, gsStr->cbAttrLen);
-		break;
-
-	case SCARD_TRANSMIT_EXTENDED:
-		{
-			transmit_struct_extended *treStr;
-			unsigned char pbSendBuffer[MAX_BUFFER_SIZE_EXTENDED];
-			unsigned char pbRecvBuffer[MAX_BUFFER_SIZE_EXTENDED];
-
-			treStr = ((transmit_struct_extended *) msgStruct->data);
-			rv = MSGCheckHandleAssociation(treStr->hCard, dwContextIndex);
-			if (rv != 0) return rv;
-
-			/* avoids buffer overflow */
-			if ((treStr->size > sizeof(pbSendBuffer))
-				|| (treStr->cbSendLength > sizeof(pbSendBuffer))
-				|| (treStr->pcbRecvLength > sizeof(pbRecvBuffer)))
-			{
-				treStr->rv = SCARD_E_INSUFFICIENT_BUFFER;
-				break;
-			}
-
-			/* on more block to read? */
-			if (treStr->size > PCSCLITE_MAX_MESSAGE_SIZE)
-			{
-				/* copy the first APDU part */
-				memcpy(pbSendBuffer, treStr->data,
-					PCSCLITE_MAX_MESSAGE_SIZE-offsetof(transmit_struct_extended, data));
-
-				/* receive the second block */
-				rv = SHMMessageReceive(
-					pbSendBuffer+PCSCLITE_MAX_MESSAGE_SIZE-offsetof(transmit_struct_extended, data),
-					treStr->size - PCSCLITE_MAX_MESSAGE_SIZE,
-					psContext[dwContextIndex].dwClientID,
-					PCSCLITE_SERVER_ATTEMPTS);
-				if (rv)
-					Log1(PCSC_LOG_CRITICAL, "reception failed");
-			}
-			else
-				memcpy(pbSendBuffer, treStr->data, treStr->cbSendLength);
-
-			ioSendPci.dwProtocol = treStr->ioSendPciProtocol;
-			ioSendPci.cbPciLength = treStr->ioSendPciLength;
-			ioRecvPci.dwProtocol = treStr->ioRecvPciProtocol;
-			ioRecvPci.cbPciLength = treStr->ioRecvPciLength;
-			cbRecvLength = treStr->pcbRecvLength;
-
-			treStr->rv = SCardTransmit(treStr->hCard, &ioSendPci,
-				pbSendBuffer, treStr->cbSendLength,
-				&ioRecvPci, pbRecvBuffer,
-				&cbRecvLength);
-
-			treStr->ioSendPciProtocol = ioSendPci.dwProtocol;
-			treStr->ioSendPciLength = ioSendPci.cbPciLength;
-			treStr->ioRecvPciProtocol = ioRecvPci.dwProtocol;
-			treStr->ioRecvPciLength = ioRecvPci.cbPciLength;
-			treStr->pcbRecvLength = cbRecvLength;
-
-			treStr->size = offsetof(transmit_struct_extended, data) + treStr->pcbRecvLength;
-			if (treStr->size > PCSCLITE_MAX_MESSAGE_SIZE)
-			{
-				/* two blocks */
-				memcpy(treStr->data, pbRecvBuffer, PCSCLITE_MAX_MESSAGE_SIZE
-					- offsetof(transmit_struct_extended, data));
-
-				rv = SHMMessageSend(msgStruct, sizeof(*msgStruct),
-					psContext[dwContextIndex].dwClientID,
-					PCSCLITE_SERVER_ATTEMPTS);
-				if (rv)
-					Log1(PCSC_LOG_CRITICAL, "transmission failed");
-
-				rv = SHMMessageSend(pbRecvBuffer + PCSCLITE_MAX_MESSAGE_SIZE
-					- offsetof(transmit_struct_extended, data),
-					treStr->size - PCSCLITE_MAX_MESSAGE_SIZE,
-					psContext[dwContextIndex].dwClientID,
-					PCSCLITE_SERVER_ATTEMPTS);
-				if (rv)
-					Log1(PCSC_LOG_CRITICAL, "transmission failed");
-			}
-			else
-			{
-				/* one block only */
-				memcpy(treStr->data, pbRecvBuffer, treStr->pcbRecvLength);
-
-				rv = SHMMessageSend(msgStruct, sizeof(*msgStruct),
-					psContext[dwContextIndex].dwClientID,
-					PCSCLITE_SERVER_ATTEMPTS);
-				if (rv)
-					Log1(PCSC_LOG_CRITICAL, "transmission failed");
-			}
-		}
-		break;
-
-	case SCARD_CONTROL_EXTENDED:
-		{
-			control_struct_extended *cteStr;
-			unsigned char pbSendBuffer[MAX_BUFFER_SIZE_EXTENDED];
-			unsigned char pbRecvBuffer[MAX_BUFFER_SIZE_EXTENDED];
-
-			cteStr = ((control_struct_extended *) msgStruct->data);
-			rv = MSGCheckHandleAssociation(cteStr->hCard, dwContextIndex);
-			if (rv != 0) return rv;
-
-			/* avoids buffer overflow */
-			if ((cteStr->size > sizeof(pbSendBuffer))
-				|| (cteStr->cbSendLength > sizeof(pbSendBuffer))
-				|| (cteStr->cbRecvLength > sizeof(pbRecvBuffer)))
-			{
-				cteStr->rv = SCARD_E_INSUFFICIENT_BUFFER;
-				break;
-			}
-
-			/* on more block to read? */
-			if (cteStr->size > PCSCLITE_MAX_MESSAGE_SIZE)
-			{
-				/* copy the first data part */
-				memcpy(pbSendBuffer, cteStr->data,
-					PCSCLITE_MAX_MESSAGE_SIZE-sizeof(*cteStr));
-
-				/* receive the second block */
-				rv = SHMMessageReceive(
-					pbSendBuffer+PCSCLITE_MAX_MESSAGE_SIZE-sizeof(*cteStr),
-					cteStr->size - PCSCLITE_MAX_MESSAGE_SIZE,
-					psContext[dwContextIndex].dwClientID,
-					PCSCLITE_SERVER_ATTEMPTS);
-				if (rv)
-					Log1(PCSC_LOG_CRITICAL, "reception failed");
-			}
-			else
-				memcpy(pbSendBuffer, cteStr->data, cteStr->cbSendLength);
-
-			dwBytesReturned = cteStr->dwBytesReturned;
-
-			cteStr->rv = SCardControl(cteStr->hCard, cteStr->dwControlCode,
-				pbSendBuffer, cteStr->cbSendLength,
-				pbRecvBuffer, cteStr->cbRecvLength,
-				&dwBytesReturned);
-
-			cteStr->dwBytesReturned = dwBytesReturned;
-
-			cteStr->size = sizeof(*cteStr) + cteStr->dwBytesReturned;
-			if (cteStr->size > PCSCLITE_MAX_MESSAGE_SIZE)
-			{
-				/* two blocks */
-				memcpy(cteStr->data, pbRecvBuffer, PCSCLITE_MAX_MESSAGE_SIZE
-					- sizeof(*cteStr));
-
-				rv = SHMMessageSend(msgStruct, sizeof(*msgStruct),
-					psContext[dwContextIndex].dwClientID,
-					PCSCLITE_SERVER_ATTEMPTS);
-				if (rv)
-					Log1(PCSC_LOG_CRITICAL, "transmission failed");
-
-				rv = SHMMessageSend(pbRecvBuffer + PCSCLITE_MAX_MESSAGE_SIZE
-					- sizeof(*cteStr),
-					cteStr->size - PCSCLITE_MAX_MESSAGE_SIZE,
-					psContext[dwContextIndex].dwClientID,
-					PCSCLITE_SERVER_ATTEMPTS);
-				if (rv)
-					Log1(PCSC_LOG_CRITICAL, "transmission failed");
-			}
-			else
-			{
-				/* one block only */
-				memcpy(cteStr->data, pbRecvBuffer, cteStr->dwBytesReturned);
-
-				rv = SHMMessageSend(msgStruct, sizeof(*msgStruct),
-					psContext[dwContextIndex].dwClientID,
-					PCSCLITE_SERVER_ATTEMPTS);
-				if (rv)
-					Log1(PCSC_LOG_CRITICAL, "transmission failed");
-			}
-		}
-		break;
-
-	default:
-		Log2(PCSC_LOG_CRITICAL, "Unknown command: %d", msgStruct->command);
-		return -1;
-	}
-
-	return 0;
-}
-
-static LONG MSGAddContext(SCARDCONTEXT hContext, DWORD dwContextIndex)
+static LONG MSGAddContext(SCARDCONTEXT hContext, SCONTEXT * threadContext)
 {
-	psContext[dwContextIndex].hContext = hContext;
+	threadContext->hContext = hContext;
 	return SCARD_S_SUCCESS;
 }
 
-static LONG MSGRemoveContext(SCARDCONTEXT hContext, DWORD dwContextIndex)
+static LONG MSGRemoveContext(SCARDCONTEXT hContext, SCONTEXT * threadContext)
 {
-	int i;
 	LONG rv;
+	int lrv;
 
-	if (psContext[dwContextIndex].hContext == hContext)
+	if (threadContext->hContext != hContext)
+		return SCARD_E_INVALID_VALUE;
+
+	(void)pthread_mutex_lock(&threadContext->cardsList_lock);
+	while (list_size(&(threadContext->cardsList)) != 0)
 	{
-		for (i = 0; i < PCSCLITE_MAX_APPLICATION_CONTEXT_CHANNELS; i++)
+		READER_CONTEXT * rContext = NULL;
+		SCARDHANDLE hCard, hLockId;
+		void *ptr;
+
+		/*
+		 * Disconnect each of these just in case
+		 */
+		ptr = list_get_at(&(threadContext->cardsList), 0);
+		if (NULL == ptr)
 		{
-			/*
-			 * Disconnect each of these just in case
-			 */
+			Log1(PCSC_LOG_CRITICAL, "list_get_at failed");
+			continue;
+		}
+		hCard = *(int32_t *)ptr;
 
-			if (psContext[dwContextIndex].hCard[i] != 0)
-			{
-				PREADER_CONTEXT rContext = NULL;
-				DWORD dwLockId;
-
-				/*
-				 * Unlock the sharing
-				 */
-				rv = RFReaderInfoById(psContext[dwContextIndex].hCard[i],
-					&rContext);
-				if (rv != SCARD_S_SUCCESS)
-					return rv;
-
-				dwLockId = rContext->dwLockId;
-				rContext->dwLockId = 0;
-
-				if (psContext[dwContextIndex].hCard[i] != dwLockId)
-				{
-					/*
-					 * if the card is locked by someone else we do not reset it
-					 * and simulate a card removal
-					 */
-					rv = SCARD_W_REMOVED_CARD;
-				}
-				else
-				{
-					/*
-					 * We will use SCardStatus to see if the card has been
-					 * reset there is no need to reset each time
-					 * Disconnect is called
-					 */
-					rv = SCardStatus(psContext[dwContextIndex].hCard[i], NULL,
-						NULL, NULL, NULL, NULL, NULL);
-				}
-
-				if (rv == SCARD_W_RESET_CARD || rv == SCARD_W_REMOVED_CARD)
-					(void)SCardDisconnect(psContext[dwContextIndex].hCard[i],
-						SCARD_LEAVE_CARD);
-				else
-					(void)SCardDisconnect(psContext[dwContextIndex].hCard[i],
-						SCARD_RESET_CARD);
-
-				psContext[dwContextIndex].hCard[i] = 0;
-			}
+		/*
+		 * Unlock the sharing
+		 */
+		rv = RFReaderInfoById(hCard, &rContext);
+		if (rv != SCARD_S_SUCCESS)
+		{
+			(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
+			return rv;
 		}
 
-		psContext[dwContextIndex].hContext = 0;
+		hLockId = rContext->hLockId;
+		rContext->hLockId = 0;
+
+		if (hCard != hLockId)
+		{
+			/*
+			 * if the card is locked by someone else we do not reset it
+			 * and simulate a card removal
+			 */
+			rv = SCARD_W_REMOVED_CARD;
+		}
+		else
+		{
+			/*
+			 * We will use SCardStatus to see if the card has been
+			 * reset there is no need to reset each time
+			 * Disconnect is called
+			 */
+			rv = SCardStatus(hCard, NULL, NULL, NULL, NULL, NULL, NULL);
+		}
+
+		if (rv == SCARD_W_RESET_CARD || rv == SCARD_W_REMOVED_CARD)
+			(void)SCardDisconnect(hCard, SCARD_LEAVE_CARD);
+		else
+			(void)SCardDisconnect(hCard, SCARD_RESET_CARD);
+
+		/* Remove entry from the list */
+		lrv = list_delete_at(&(threadContext->cardsList), 0);
+		if (lrv < 0)
+			Log2(PCSC_LOG_CRITICAL,
+				"list_delete_at failed with return value: %d", lrv);
+	}
+	(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
+	list_destroy(&(threadContext->cardsList));
+
+	/* We only mark the context as no longer in use.
+	 * The memory is freed in MSGCleanupCLient() */
+	threadContext->hContext = 0;
+
+	return SCARD_S_SUCCESS;
+}
+
+static LONG MSGAddHandle(SCARDCONTEXT hContext, SCARDHANDLE hCard,
+	SCONTEXT * threadContext)
+{
+	if (threadContext->hContext == hContext)
+	{
+		/*
+		 * Find an empty spot to put the hCard value
+		 */
+		int listLength, lrv;
+
+		listLength = list_size(&(threadContext->cardsList));
+		if (listLength >= contextMaxCardHandles)
+		{
+			Log4(PCSC_LOG_DEBUG,
+				"Too many card handles for thread context @%p: %d (max is %d)"
+				"Restart pcscd with --max-card-handle-per-thread value",
+				threadContext, listLength, contextMaxCardHandles);
+			return SCARD_E_NO_MEMORY;
+		}
+
+		(void)pthread_mutex_lock(&threadContext->cardsList_lock);
+		lrv = list_append(&(threadContext->cardsList), &hCard);
+		(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
+		if (lrv < 0)
+		{
+			Log2(PCSC_LOG_CRITICAL, "list_append failed with return value: %d",
+				lrv);
+			return SCARD_E_NO_MEMORY;
+		}
 		return SCARD_S_SUCCESS;
 	}
 
 	return SCARD_E_INVALID_VALUE;
 }
 
-static LONG MSGAddHandle(SCARDCONTEXT hContext, SCARDHANDLE hCard,
-	DWORD dwContextIndex)
+static LONG MSGRemoveHandle(SCARDHANDLE hCard, SCONTEXT * threadContext)
 {
-	int i;
+	int lrv;
 
-	if (psContext[dwContextIndex].hContext == hContext)
+	(void)pthread_mutex_lock(&threadContext->cardsList_lock);
+	lrv = list_delete(&(threadContext->cardsList), &hCard);
+	(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
+	if (lrv < 0)
 	{
-
-		/*
-		 * Find an empty spot to put the hCard value
-		 */
-		for (i = 0; i < PCSCLITE_MAX_APPLICATION_CONTEXT_CHANNELS; i++)
-		{
-			if (psContext[dwContextIndex].hCard[i] == 0)
-			{
-				psContext[dwContextIndex].hCard[i] = hCard;
-				break;
-			}
-		}
-
-		if (i == PCSCLITE_MAX_APPLICATION_CONTEXT_CHANNELS)
-		{
-			return SCARD_F_INTERNAL_ERROR;
-		} else
-		{
-			return SCARD_S_SUCCESS;
-		}
-
+		Log2(PCSC_LOG_CRITICAL, "list_delete failed with error %d", lrv);
+		return SCARD_E_INVALID_VALUE;
 	}
 
-	return SCARD_E_INVALID_VALUE;
-}
-
-static LONG MSGRemoveHandle(SCARDHANDLE hCard, DWORD dwContextIndex)
-{
-	int i;
-
-	for (i = 0; i < PCSCLITE_MAX_APPLICATION_CONTEXT_CHANNELS; i++)
-	{
-		if (psContext[dwContextIndex].hCard[i] == hCard)
-		{
-			psContext[dwContextIndex].hCard[i] = 0;
-			return SCARD_S_SUCCESS;
-		}
-	}
-
-	return SCARD_E_INVALID_VALUE;
+	return SCARD_S_SUCCESS;
 }
 
 
-static LONG MSGCheckHandleAssociation(SCARDHANDLE hCard, DWORD dwContextIndex)
+static LONG MSGCheckHandleAssociation(SCARDHANDLE hCard,
+	SCONTEXT * threadContext)
 {
-	int i;
+	int list_index = 0;
 
-	for (i = 0; i < PCSCLITE_MAX_APPLICATION_CONTEXT_CHANNELS; i++)
+	if (0 == threadContext->hContext)
 	{
-		if (psContext[dwContextIndex].hCard[i] == hCard)
-		{
-			return 0;
-		}
+		/* the handle is no more valid. After SCardReleaseContext() for
+		 * example */
+		Log1(PCSC_LOG_CRITICAL, "Invalidated handle");
+		return -1;
 	}
+
+	(void)pthread_mutex_lock(&threadContext->cardsList_lock);
+	list_index = list_locate(&(threadContext->cardsList), &hCard);
+	(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
+	if (list_index >= 0)
+		return 0;
 
 	/* Must be a rogue client, debug log and sleep a couple of seconds */
 	Log1(PCSC_LOG_ERROR, "Client failed to authenticate");
@@ -819,18 +898,47 @@ static LONG MSGCheckHandleAssociation(SCARDHANDLE hCard, DWORD dwContextIndex)
 	return -1;
 }
 
-static LONG MSGCleanupClient(DWORD dwContextIndex)
+
+/* Should be called just prior to exiting the thread as it de-allocates
+ * the thread memory strucutres
+ */
+static LONG MSGCleanupClient(SCONTEXT * threadContext)
 {
-	if (psContext[dwContextIndex].hContext != 0)
+	int lrv;
+	int listSize;
+
+	if (threadContext->hContext != 0)
 	{
-		(void)SCardReleaseContext(psContext[dwContextIndex].hContext);
-		(void)MSGRemoveContext(psContext[dwContextIndex].hContext,
-			dwContextIndex);
+		(void)SCardReleaseContext(threadContext->hContext);
+		(void)MSGRemoveContext(threadContext->hContext, threadContext);
 	}
 
-	psContext[dwContextIndex].dwClientID = 0;
-	psContext[dwContextIndex].protocol_major = 0;
-	psContext[dwContextIndex].protocol_minor = 0;
+	Log3(PCSC_LOG_DEBUG,
+		"Thread is stopping: dwClientID=%d, threadContext @%p",
+		threadContext->dwClientID, threadContext);
+
+	/* Clear the struct to ensure that we detect
+	 * access to de-allocated memory
+	 * Hopefully the compiler won't optimise it out */
+	memset((void*) threadContext, 0, sizeof(SCONTEXT));
+	Log2(PCSC_LOG_DEBUG, "Freeing SCONTEXT @%p", threadContext);
+
+	(void)pthread_mutex_lock(&contextsList_lock);
+	lrv = list_delete(&contextsList, threadContext);
+	listSize = list_size(&contextsList);
+	(void)pthread_mutex_unlock(&contextsList_lock);
+	if (lrv < 0)
+		Log2(PCSC_LOG_CRITICAL, "list_delete failed with error %x", lrv);
+
+	free(threadContext);
+
+	/* start a suicide alarm */
+	if (AutoExit && (listSize < 1))
+	{
+		Log2(PCSC_LOG_DEBUG, "Starting suicide alarm in %d seconds",
+			TIME_BEFORE_SUICIDE);
+		alarm(TIME_BEFORE_SUICIDE);
+	}
 
 	return 0;
 }

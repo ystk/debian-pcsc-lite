@@ -3,8 +3,10 @@
  *
  * Copyright (C) 2000-2003
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2002-2009
+ *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: hotplug.h 4249 2009-06-05 08:41:59Z rousseau $
+ * $Id: hotplug.h 5434 2010-12-08 14:13:21Z rousseau $
  */
 
 /**
@@ -14,11 +16,6 @@
 
 #ifndef __hotplug_h__
 #define __hotplug_h__
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
 #ifndef PCSCLITE_HP_DROPDIR
 #define PCSCLITE_HP_DROPDIR		"/usr/local/pcsc/drivers/"
@@ -37,9 +34,5 @@ extern "C"
 	ULONG HPRegisterForHotplugEvents(void);
 	LONG HPStopHotPluggables(void);
 	void HPReCheckSerialReaders(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

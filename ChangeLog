@@ -1,3 +1,358 @@
+pcsc-lite-1.8.4: Ludovic Rousseau
+26 June 2012
+- Add [ and ] in the list of accepted characters for a reader name
+- truncates the reader name if it is too long instead of rejecting the
+  reader
+- The restriction to have to call SCardEstablishContext() in each thread
+  has been removed. Threads could now share a PC/SC context.
+- Fix compiler failure for static driver
+- Update IFDHandler API Doxygen regarding the "libusb-1.0" naming scheme
+- Some other minor improvements and bug corrections
+
+
+pcsc-lite-1.8.3: Ludovic Rousseau
+30 March 2012
+- ignore directories and hidden (.*) files when parsing a configuration
+  directory (like /etc/reader.conf.d/)
+- add Mac OS X for PC/SC spy tool
+- fix a bug in PC/SC spy tool when loading of the real library fails
+- add PCSCv2_PART10_PROPERTY_dwMaxAPDUDataSize,
+  PCSCv2_PART10_PROPERTY_wIdVendor and PCSCv2_PART10_PROPERTY_wIdProduct
+  from PC/SC v2 part 10 release 2.02.09 (not yet published)
+- Some other minor improvements and bug corrections
+
+
+pcsc-lite-1.8.2: Ludovic Rousseau
+18 January 2012
+- rename pcsc-spy.py to pcsc-spy and install it as a normal binary (in
+  /usr/local/bin by default)
+- write a pcsc-spy.1 manpage
+- fix a bug with a multi-slot reader
+- Info.plist parser: avoid a buffer read overflow in &amp; management
+- Some Doxygen improvements
+
+
+pcsc-lite-1.8.1: Ludovic Rousseau
+25 November 2011
+- Distribute missing files from src/spy/
+
+
+pcsc-lite-1.8.0: Ludovic Rousseau
+19 November 2011
+- PC/SC spy tool
+- Support systemd socket activation (the auto start of pcscd from the
+  library has been removed. Use systemd instead)
+- SCardGetStatusChange(): check all the readers are already known and
+  return SCARD_E_UNKNOWN_READER if a reader name is not present.
+  Windows XP has this behavior.
+- SCardEstablishContext(): Invalidate all the handles in the son after a
+  fork
+- Add define of FEATURE_EXECUTE_PACE from PCSC v2 Part 10 Amendment 1
+  2011-06-03
+- Fix some memory leaks repoted by Coverity
+- Enable silent build by default
+- log_line(): correctly calculate delta time when no color is used
+  The update of last_time was only done in case of colorization
+  (LogDoColor). So on unsupported consoles the time was wrong.
+- log_xxd_always(): Use a variable-length array
+  The debug message buffer is no more with a fixed size (around 600
+  bytes of buffer to log) but uses a variable-length array.
+  It is now possible to log extended APDU of 64kB.
+  The variable-length array feature is available in GCC in C90 mode and
+  is mandatory in C99 standard.
+- Some other minor improvements and bug corrections
+
+
+pcsc-lite-1.7.4: Ludovic Rousseau
+23 June 2011
+- Fix a stupid bug from the previous version. T=1 cards were not
+  working.
+
+
+pcsc-lite-1.7.3: Ludovic Rousseau
+22 June 2011
+- COPYING: Add my name as copyright holder
+- hotplug libudev: support libudev >= 171
+- hotplug libusb: Fix a memory leak
+- pcscd: exit immediately in case of SIGTERM
+  Closes Debian bug #620305 "pcscd slows down shutdown/restart"
+- Send logs to stdout instead of stderr
+  It is now possible to use tee(1) to redirect logs in a file without
+  first redirecting stderr to stdout
+- Add command line option -T, --color: force use of colored logs
+  The idea is to have colored logs even if they are redirected to a file
+  or a pipe.
+- Define g_rgSCardT?Pci as const structures to be more Windows like
+  I do not expect a regression or compilation problem in WinSCard API
+  users but how knows...
+- log at level PCSC_LOG_DEBUG instead of PCSC_LOG_ERROR to avoid filling
+  the system log file
+- Remove the deprecated define FEATURE_MCT_READERDIRECT (replaced by
+  FEATURE_MCT_READER_DIRECT)
+- better Hurd support
+- some other minor improvements and bug corrections
+
+
+pcsc-lite-1.7.2: Ludovic Rousseau
+31 March 2011
+- fix a crash if a specific driver fails to work and no class driver is
+  available
+
+pcsc-lite-1.7.1: Ludovic Rousseau
+30 March 2011
+- use libudev only on Linux and libusb elsewhere. The configuration now
+  works by default on GNU/kFreeBSD systems
+- Try to use a (CCID) class driver if a specific driver fails to use the
+  reader.
+- fix a potential crash
+
+
+pcsc-lite-1.7.0: Ludovic Rousseau
+9 March 2011
+- use libudev instead of (the deprecated) libhal
+
+
+pcsc-lite-1.6.7: Ludovic Rousseau
+22 February 2011
+- better Mac OS X support
+- Fix Alioth bug [#312960] SCardDisconnect when other context has transaction
+- add support of multi-interfaces readers with libusb and not just libhal
+- add a API tracing feature in the client side (#define DO_TRACE)
+- allow the use of tracing and profiling features from different
+  application threads
+- fix a problem with a multi-slots reader
+- fix minor problems detected by the clang tool
+- some other minor improvements and bug corrections
+
+
+pcsc-lite-1.6.6: Ludovic Rousseau
+12 December 2010
+- SCardGetStatusChange(): fix a bug on 64-bits systems
+- Fix another bug because of a regression in internal list manager
+
+
+pcsc-lite-1.6.5: Ludovic Rousseau
+3 December 2010
+- Power on the card _only_ if an application requests a connection.
+  You can disable the feature using DISABLE_ON_DEMAND_POWER_ON in
+  src/pcscd.h.in
+  If DISABLE_AUTO_POWER_ON is defined then do not automatically power on
+  the card. The card will be powered on on the first SCardConnect()
+  See http://ludovicrousseau.blogspot.com/2010/10/card-auto-power-on-and-off.html
+- SCardReconnect(): return SCARD_E_NO_SMARTCARD when card is removed and
+  SCARD_W_UNRESPONSIVE_CARD when card is unresponsive instead of
+  SCARD_E_PROTO_MISMATCH
+- Install pcscd as sgid pcscd instead of suid root
+  See http://ludovicrousseau.blogspot.com/2010/09/pcscd-auto-start.html
+- SCardSetTimeout() is no more provided. This function is not provided
+  by Microsoft and is deprecated since 2004 in pcsc-lite. 
+- SCardCancelTransaction() is no more provided. This function is not
+  provided by Microsoft and is deprecated since 2005 in pcsc-lite.
+- Parsing the CCID Info.plist (159 readers supported) was, on a i386
+  machine, done in 264306 µs and is now done 5547 µs => gain x47 or 4600%
+  See http://ludovicrousseau.blogspot.com/2010/08/ram-and-cpu-improvements-in-pcsc-lite.html
+- It is now possible to configure the local socket name to use using the
+  environment variable PCSCLITE_CSOCK_NAME
+  See http://ludovicrousseau.blogspot.com/2010/11/pcsc-client-and-server-on-two-different.html	  
+- Wait until all connected readers have a chance to power up a possibly
+  inserted card before accepting clients.
+- restrict pcscd features when not run by root (so using suid): APDU
+  logging or setting parameters are disabled for example
+- fix compilation problem on kfreebsd-* systems
+- PCSC/reader.h: HOST_TO_CCID_16() and HOST_TO_CCID_32() are now
+  identity functions
+  Since libccid 1.4.1 (revision 5252) the byte order is no more important
+- If you want to use IFDHCreateChannel() instead of
+  IFDHCreateChannelByName() then do not use any DEVICENAME line in the
+  configuration file. IFDHCreateChannel() will then be called with the
+  CHANNELID parameter.
+- the CHANNELID parameter can also be a decimal number.
+- Remove the support of IFDHandler v1 API. I don't know any driver using
+  this API.
+  See http://ludovicrousseau.blogspot.com/2010/10/ifdhandler-version-1-support-removed.html
+- avoids a buffer overflow with badly formed ATR
+- some other minor improvements and bug corrections
+
+
+pcsc-lite-1.6.4: Ludovic Rousseau
+15 August 2010
+- Do not use sysconfdir as configuration directory but
+  "${sysconfdir}/reader.conf.d" instead.
+  Use --enable-confdir=DIR if you want to set a specific value without
+  the "reader.conf.d" appended.
+
+
+pcsc-lite-1.6.3: Ludovic Rousseau
+15 August 2010
+- "/reader.conf.d" is only appended to sysconfdir if no value of
+  sysconfdir is provided
+- Define LPSCARD_READERSTATE since this is used in the MSDN prototype.
+  Use LPSCARD_READERSTATE in winscard.h instead of (SCARD_READERSTATE *)
+  to mimic the MSDN API.
+- fix a pcscd crash when the application uses a PCSC handle after a
+  fork. The crash was with openvpn.
+- some other minor improvements and bug corrections
+
+pcsc-lite-1.6.2: Ludovic Rousseau
+4 August 2010
+- implement a "Forced suicide" mechanism.
+  After 3 Ctrl-C without much reaction from pcscd (in fact the drivers)
+  we force the suicide. Sometimes libusb is blocked in a kind of
+  dead-lock and kill -9 was the only option.
+- Add support of TAG_IFD_STOP_POLLING_THREAD to request the stop of the
+  driver polling function.
+- Avoid a division by 0. Closes [#312555] "simclist bug in pcsc-lite"
+- if pcscd is stared by libpcsclite then close all file handles except
+  stdin, stdout and stderr so that pcscd does not confiscate ressources
+  allocated by the application
+- in case of auto exit create a new session so that Ctrl-C on the
+  application will not also quit pcscd
+- src/hotplug_libusb.c: port from libusb-0.1 to libusb-1.0
+- default configuration is now $sysconfdir/reader.conf.d
+- fix crash with empty config dir
+- src/PCSC/winscard.h: Remove definitions of SCARD_READERSTATE_A
+  PSCARD_READERSTATE_A and LPSCARD_READERSTATE_A types
+- some other minor improvements and bug corrections
+
+
+pcsc-lite-1.6.1: Ludovic Rousseau
+4 June 2010
+- SCardControl(): do not check for card events since we are talking to
+  the reader not the card. A smart card removal should not make
+  SCardControl() fail with SCARD_W_REMOVED_CARD
+- pcscd do not timeout any more after 2 minutes of inactivity. If the
+  other side of the socket dies we will get an error from the kernel.
+  The problem was that if a client does nothing during
+  PCSCLITE_READ_TIMEOUT (120 seconds by default) then pcscd considers it
+  as a dead client and closes the connection. I guess this problem was
+  present since the first version of pcsc-lite but nobody complained
+  before.
+- pcscd: do not return before most of the initialisation are done
+  correctly. The idea is that pcscd can return an error code if the
+  daemon fails to start correctly (hald not started for example).
+  Before the patch pcscd became a daemon, then returned 0 (success) and
+  then continued with the initialisation. If the initialisation failed
+  it was too late to return an error code. The /etc/init.d/pcscd script
+  was not aware of the failure.
+  Closes https://bugzilla.redhat.com/show_bug.cgi?id=580321
+  "/usr/sbin/pcscd exit codes broken"
+- src/hotplug_libusb.c: Add a synchronisation so that if pcscd is auto
+  started the initial reader list is available before the server takes
+  commands from clients.
+  Before the change early calls of SCardListReaders() returned an empty
+  list of readers even if a reader was connected.
+  Thanks to Patrice Angelini for the bug report
+- SCardConnect() & SCardReconnect(): do not reset the cardProtocol in
+  SCARD_SHARE_DIRECT case since the card have _not_ been reseted. A new
+  PPS negociation would fail.
+- Do not install files in /etc any more. Serial drivers are rare now.
+- Avoids a crash if a client sends a unknown command.
+  Thanks to Martin Vogt for the bug report
+- some other minor improvements and bug corrections
+
+
+pcsc-lite-1.6.0: Ludovic Rousseau
+5 May 2010
+- redesign the client/server communication:
+  * no more shared memory used (allow pcscd and libpcsclite1.so to be on
+  different computer and talk over a network)
+  * no more difference between short and extended APDU
+  * no more use of a /var/run/pcscd/pcscd.events/ directory. events are
+  sent through the socket
+  * simpler command format between client and server
+  The side effect is that you are not able to mix an old pcscd with a
+  new libpcsclite1.so or the reverse. SCardEstablishContext() will fail
+  unless you update both sides of the communication.
+- Use lists instead of fixed size arrays to store handles.
+  It is now possible to have:
+  - 200 simultaneous PC/SC clients instead of 16
+  - 200 SCardConnect per client instead of 16
+  - 200 clients per reader instead of 16
+  The default value of 200 can be changed by giving an argument to pcscd
+  --max-thread --max-card-handle-per-thread --max-card-handle-per-reader
+  Thanks to Jean-Luc Giraud for the big patch
+- Make SCardReconnect(), SCardStatus() and SCardTransmit() block instead
+  of returning SCARD_E_SHARING_VIOLATION immediately. These functions
+  will then behave like on Windows.
+  This can happen if these functions are called when the reader is
+  locked by a PCSC transaction
+  (SCardBeginTransaction/SCardEndTransaction).
+  You can define the environment variable PCSCLITE_NO_BLOCKING to use
+  the old behavior.
+  Thanks to Jean-Luc Giraud for the patch.
+  http://archives.neohapsis.com/archives/dev/muscle/2010-q1/0041.html
+- SCardEstablishContext(): try to start the pcscd daemon if not already
+  running.
+  . pcscd will suicide itself after 60 seconds of inactivity if it is
+  started using --auto-exit. This is the default behavior when pcscd is
+  started by libpcsclite
+  . Set PCSCLITE_PCSCD_ARGS with the argument you want to pass to pcscd in
+  autostart Only one argument is passed. The space character is not a
+  separator. example: export PCSCLITE_PCSCD_ARGS=-dfa
+- SCardListReaders(): can use SCARD_AUTOALLOCATE
+- SCardGetAttrib(): return SCARD_E_INSUFFICIENT_BUFFER if the driver
+  returns IFD_ERROR_INSUFFICIENT_BUFFER
+  . add support of SCARD_ATTR_DEVICE_FRIENDLY_NAME as it is better
+  implemented in pcscd (it knows the friendly name)
+- SCardGetStatusChange(): Calling with cReaders == 0 will now just
+  return SCARD_S_SUCCESS
+  . Use the special reader name "\\?PnP?\Notification" to wait for a
+  reader event notification
+- SCardTransmit(): do not limit the minimum size of an APDU to 4 bytes.
+  non ISO 7816-4 compliant cards (like Mifare DESFIRE) may use shorter
+  commands
+- SCardStatus(): returns SCARD_E_SHARING_VIOLATION if the reader is
+  already used More conform to Windows
+- PCSC/reader.h: update sruct PIN_PROPERTIES_STRUCTURE to be conform
+  with Revision 2.02.06, April 2009 of PCSCv2 part 10 Fields
+  wLcdMaxCharacters and wLcdMaxLines have been removed
+  . rename FEATURE_MCT_READERDIRECT in FEATURE_MCT_READER_DIRECT to be
+  conform with ch. 2.3 of PCSC v2 part 10
+  . add FEATURE_GET_TLV_PROPERTIES and FEATURE_CCID_ESC_COMMAND from
+  PC/SC part 10 v2.02.07 March 2010
+  . Add PCSCv2_PART10_PROPERTY_* defines
+- SCardControl() return SCARD_E_UNSUPPORTED_FEATURE if the driver
+  returned IFD_ERROR_NOT_SUPPORTED or IFD_NOT_SUPPORTED This is used to
+  separate an unsupported value of ControlCode from a general error
+- Use the standard --sysconfdir=DIR ($prefix/etc by default) instead of
+  --enable-confdir=DIR for defining the directory containing reader.conf
+- remove SCF support (PC/SC over Smart Card Framework). I never used
+  this feature and SCF is now dead and replaced by JSR 268
+  (javax.smartcardio)
+- Better handling of PCSCLITE_STATIC_DRIVER as can be used on platforms
+  using µClinux (without dynamic loader).  This is used to statically
+  link the reader driver to pcscd. Since the link is static you must
+  define the IFDHandler API version at compilation time. Either define
+  IFDHANDLERv1, IFDHANDLERv2 or IFDHANDLERv3
+- Use dynamic instead of static allocation for the driver library
+  filename. The filename is no more limited to 100 characters.
+  Closes: [#312332] MAX_LIBNAME too short?
+- force the return codes SCARD_* to be long since the SCard* functions
+  return a LONG type
+- Add the ability to parse all the configuration files of a directory
+  instead of just one configuration file. update-reader.conf is then now
+  obsolete.
+- Add --enable-embedded (default is no) to build pcsc-lite for an
+  embedded system. This will activate the NO_LOG option to disable
+  logging and limit RAM and disk consumption.
+- If NO_LOG is defined then no log are displayed. The idea is to limit
+  the binaries size on disk and RAM consumption at execution time.
+  With NO_LOG defined we gain 26% (17 kB) for the .text segment of pcscd
+  and 15% (4 kB) for the .text segment of libpcsclite.so (for i386)
+- Define a minimal pcsc_stringify_error() if NO_LOG is defined. Only the
+  error code in hex is displayed in this case.
+  Gain: 2kB of .text (10%) for libpcsclite
+- Add --disable-serial and --disable-usb options
+  --disable-serial removes support of /etc/reader.conf gain: 8.0kB of
+  .text (12%) and 160 bytes of .bss (4%) for pcscd
+  --disable-usb removes support of USB hotplug gain: 9.7kB of .text
+  (14%) and 960 bytes of .bss (23%) for pcscd
+  If you use both options (and use a static driver configuration) gain:
+  17.7kB of .text (26%) and 1152 bytes of .bss (28%) for pcscd
+- Better support of Android
+- some other minor improvements and bug corrections
+
+
 pcsc-lite-1.5.5: Ludovic Rousseau
 28 July 2009
 - add the reader interface name if provided by the device
@@ -40,7 +395,7 @@ pcsc-lite-1.5.3: Ludovic Rousseau
 - reader.h: add PIN_PROPERTIES_STRUCTURE structure and FEATURE_IFD_PIN_PROPERTIES
   Thanks to Martin Paljak for the patch
 - remove powermgt_macosx.c since it is using APSL version 1.1 instead of
-  the BSD-like licence like the other files 
+  the BSD-like licence like the other files
   Thanks to Stanislav Brabec for the bug report
 - avoid a possible crash due to a race condition
   Thanks to Matheus Ribeiro for the patch
@@ -65,7 +420,7 @@ pcsc-lite-1.5.2: Ludovic Rousseau
 - log TxBuffer and RxBuffer if the SCardControl() command failed.
   Closes: [#311376] PCSC_LOG_VERBOSE via -dd; print details of "Card not
   transacted"
-- add a mutex to avoid a race condition 
+- add a mutex to avoid a race condition
   Closes: [#311377] Race condition in SCardBeginTransaction
 - SCardGetStatusChange() may not return if the reader was removed.
 - some other minor improvements and bug corrections
@@ -105,7 +460,7 @@ pcsc-lite-1.5.0: Ludovic Rousseau
 
 pcsc-lite-1.4.102: Ludovic Rousseau
 27 June 2008
-- pcscd -v now displays the enabled features 
+- pcscd -v now displays the enabled features
 - add support of SCARD_AUTOALLOCATE in SCardListReaders(),
   SCardListReaderGroups() and SCardGetAttrib
 - add SCardFreeMemory()
@@ -148,7 +503,7 @@ pcsc-lite-1.4.100: Ludovic Rousseau
   in case of "PCSC Not Running" or "PCSC restarted" so that nothing is
   logged by default.  PCSCLITE_DEBUG can be defined to see the message.
   Programs linked with libpcsclite will not display anything if pcscd is
-  not running. Solves Red Hat bug 428299. 
+  not running. Solves Red Hat bug 428299.
 - default log level is PCSC_LOG_CRITICAL+1 so that NO log is sent to
   stderr by default. You need to explicitly set PCSCLITE_DEBUG to have
   logs. (in a library stderr(2) can be any file opened with fd=2 so

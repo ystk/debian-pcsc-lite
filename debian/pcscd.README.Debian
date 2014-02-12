@@ -1,21 +1,15 @@
 pcscd for Debian
 ----------------
 
-pscsd starts before usbmgr
-==========================
+pscsd sgid pcscd
+================
 
-Up to version 1.0.2.beta5-1 pcscd init.d script was started *before*
-usbmgr (pcscd was level 20 (default) and usbmgr was level 45). So USB
-readers managed by usbmgr could not be used.
+/usr/sbin/pcscd is sgid pcscd so that the process is started with the
+access rights of the pcscd group.
+Smart card reader drivers are supposed to set access rights correctly so
+that they are accessible in read and write by group pcscd. This is done
+by the libccid driver since version 1.4.1-1 for example.
 
-Now pcscd is started after usbmgr (pcscd uses level 50) but if you
-upgraded from a earlier version you may still have the old
-configuration.
+See http://ludovicrousseau.blogspot.com/2010/09/pcscd-auto-start.html
 
-You have to completely remove pcscd using 'dpkg --purge pcscd' or
-'apt-get remove --purge pcscd' and reinstall it (and the other packages
-depending in pcscd) after.
-
-See Debian bug #146151.
-
- -- Ludovic Rousseau <rousseau@debian.org>, Sun Jun 30 14:16:50 CEST 2002
+ -- Ludovic Rousseau <rousseau@debian.org>, Sat Dec  4 23:13:48 CET 2010

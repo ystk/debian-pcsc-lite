@@ -3,9 +3,12 @@
  *
  * Copyright (C) 2001-2004
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2003-2004
  *  Damien Sauveron <damien.sauveron@labri.fr>
+ * Copyright (C) 2002-2010
+ *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: winscard_svc.h 2635 2007-10-09 15:01:07Z rousseau $
+ * $Id: winscard_svc.h 5434 2010-12-08 14:13:21Z rousseau $
  */
 
 /**
@@ -17,14 +20,9 @@
 #ifndef __winscard_svc_h__
 #define __winscard_svc_h__
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-	LONG ContextsInitialize(void);
+	LONG ContextsInitialize(int, int);
+	void ContextsDeinitialize(void);
 	LONG CreateContextThread(uint32_t *);
-#ifdef __cplusplus
-}
-#endif
+	LONG MSGSignalClient(uint32_t filedes, LONG rv);
 
 #endif

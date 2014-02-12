@@ -3,12 +3,12 @@
  *
  * MUSCLE SmartCard Development ( http://www.linuxnet.com )
  *
- * Copyright (C) 2003-2007
+ * Copyright (C) 2003-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
+ * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -17,10 +17,9 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * with this program; if not, see <http://www.gnu.org/licenses/>.
  *
- * $Id: pcsc_demo.c 3235 2008-12-13 14:28:50Z rousseau $
+ * $Id: pcsc_demo.c 6003 2011-10-05 13:22:23Z rousseau $
  */
 
 #include <stdio.h>
@@ -63,14 +62,14 @@ int main(int argc, char *argv[])
 	char pbReader[MAX_READERNAME] = "";
 	int reader_nb;
 	unsigned int i;
-    SCARD_IO_REQUEST *pioSendPci;
+	const SCARD_IO_REQUEST *pioSendPci;
 	SCARD_IO_REQUEST pioRecvPci;
 	BYTE pbRecvBuffer[10];
 	BYTE pbSendBuffer[] = { 0x00, 0xA4, 0x00, 0x00, 0x02, 0x3F, 0x00 };
 	DWORD dwSendLength, dwRecvLength;
 
 	printf("PC/SC sample code\n");
-	printf("V 1.3 2003-2007, Ludovic Rousseau <ludovic.rousseau@free.fr>\n");
+	printf("V 1.4 2003-2009, Ludovic Rousseau <ludovic.rousseau@free.fr>\n");
 
 	printf("\nTHIS PROGRAM IS NOT DESIGNED AS A TESTING TOOL FOR END USERS!\n");
 	printf("Do NOT use it unless you really know what you do.\n\n");
@@ -82,23 +81,9 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	/* Retrieve the available readers list.
-	 *
-	 * 1. Call with a null buffer to get the number of bytes to allocate
-	 * 2. malloc the necessary storage
-	 * 3. call with the real allocated buffer
-	 */
-	rv = SCardListReaders(hContext, NULL, NULL, &dwReaders);
-	PCSC_ERROR(rv, "SCardListReaders")
-
-	mszReaders = malloc(sizeof(char)*dwReaders);
-	if (mszReaders == NULL)
-	{
-		printf("malloc: not enough memory\n");
-		goto end;
-	}
-
-	rv = SCardListReaders(hContext, NULL, mszReaders, &dwReaders);
+	/* Retrieve the available readers list. */
+	dwReaders = SCARD_AUTOALLOCATE;
+	rv = SCardListReaders(hContext, NULL, (LPSTR)&mszReaders, &dwReaders);
 	PCSC_ERROR(rv, "SCardListReaders")
 
 	/* Extract readers from the null separated string and get the total
@@ -179,7 +164,7 @@ int main(int argc, char *argv[])
             break;
         default:
             printf("Unknown protocol\n");
-            return -1;
+            goto end;
     }
 
 	/* exchange APDU */
@@ -246,7 +231,7 @@ int main(int argc, char *argv[])
 	/* get card status change */
 	{
 		/* check only one reader */
-		SCARD_READERSTATE_A rgReaderStates[1];
+		SCARD_READERSTATE rgReaderStates[1];
 
 		rgReaderStates[0].szReader = pbReader;
 		rgReaderStates[0].dwCurrentState = SCARD_STATE_UNAWARE;
@@ -284,15 +269,16 @@ int main(int argc, char *argv[])
 	PCSC_ERROR(rv, "SCardDisconnect")
 
 end:
+	/* free allocated memory */
+	if (mszReaders)
+		SCardFreeMemory(hContext, mszReaders);
+
 	/* We try to leave things as clean as possible */
 	rv = SCardReleaseContext(hContext);
 	if (rv != SCARD_S_SUCCESS)
 		printf("SCardReleaseContext: %s (0x%lX)\n", pcsc_stringify_error(rv),
 			rv);
 
-	/* free allocated memory */
-	if (mszReaders)
-		free(mszReaders);
 	if (readers)
 		free(readers);
 

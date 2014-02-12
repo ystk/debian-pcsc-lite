@@ -3,10 +3,10 @@
  *
  * Copyright (C) 2001
  *  David Corcoran <corcoran@linuxnet.com>
- * Copyright (C) 2004
+ * Copyright (C) 2002-2010
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: dyn_hpux.c 2265 2006-12-03 13:17:42Z rousseau $
+ * $Id: dyn_hpux.c 5047 2010-06-29 14:39:24Z rousseau $
  */
 
 /*
@@ -21,7 +21,7 @@
 #include <errno.h>
 
 #include "pcsclite.h"
-#include "debug.h"
+#include "debuglog.h"
 #include "dyn_generic.h"
 
 int DYN_LoadLibrary(void **pvLHandle, char *pcLibrary)

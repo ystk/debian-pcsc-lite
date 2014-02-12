@@ -1,10 +1,10 @@
 /*
  * MUSCLE SmartCard Development ( http://www.linuxnet.com )
  *
- * Copyright (C) 2006-2007
+ * Copyright (C) 2006-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: pcscdaemon.c 2377 2007-02-05 13:13:56Z rousseau $
+ * $Id: utils.c 5711 2011-05-05 09:02:08Z rousseau $
  */
 
 /**
@@ -21,27 +21,29 @@
 #include <signal.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <pthread.h>
 
-#include "debug.h"
 #include "config.h"
+#include "debuglog.h"
 #include "utils.h"
 #include "pcscd.h"
 #include "sys_generic.h"
 
 pid_t GetDaemonPid(void)
 {
-	FILE *f;
+	int fd;
 	pid_t pid;
 
 	/* pids are only 15 bits but 4294967296
 	 * (32 bits in case of a new system use it) is on 10 bytes
 	 */
-	if ((f = fopen(PCSCLITE_RUN_PID, "rb")) != NULL)
+	fd = open(PCSCLITE_RUN_PID, O_RDONLY);
+	if (fd >= 0)
 	{
 		char pid_ascii[PID_ASCII_SIZE];
 
-		(void)fgets(pid_ascii, PID_ASCII_SIZE, f);
-		(void)fclose(f);
+		(void)read(fd, pid_ascii, PID_ASCII_SIZE);
+		(void)close(fd);
 
 		pid = atoi(pid_ascii);
 	}
@@ -77,120 +79,6 @@ int SendHotplugSignal(void)
 } /* SendHotplugSignal */
 
 /**
- * Sends an asynchronous event to any waiting client
- *
- * Just write 1 byte to any fifo in PCSCLITE_EVENTS_DIR and remove the file
- *
- * This function must be secured since the files are created by the library
- * or any non privileged process. We must not follow symlinks for example
- */
-int StatSynchronize(struct pubReaderStatesList *readerState)
-{
-	DIR *dir_fd;
-	struct dirent *dir;
-
-	if (readerState)
-		(void)SYS_MMapSynchronize((void *)readerState, SYS_GetPageSize() );
-
-	dir_fd = opendir(PCSCLITE_EVENTS_DIR);
-	if (NULL == dir_fd)
-	{
-		Log2(PCSC_LOG_ERROR, "Can't opendir " PCSCLITE_EVENTS_DIR ": %s",
-			strerror(errno));
-		return -1;
-	}
-
-	while ((dir = readdir(dir_fd)) != NULL)
-	{
-		char filename[FILENAME_MAX];
-		int fd;
-		char buf[] = { '\0' };
-		struct stat fstat_buf;
-
-		if ('.' == dir->d_name[0])
-			continue;
-
-		(void)snprintf(filename, sizeof(filename), "%s/%s", PCSCLITE_EVENTS_DIR,
-			dir->d_name);
-		Log2(PCSC_LOG_DEBUG, "status file: %s", filename);
-
-		fd = SYS_OpenFile(filename, O_WRONLY | O_APPEND | O_NONBLOCK, 0);
-		if (fd < 0)
-		{
-			/* ENXIO "No such device or address" is a normal error
-			 * if the client is no more listening the pipe */
-			Log3(ENXIO == errno ? PCSC_LOG_DEBUG : PCSC_LOG_ERROR,
-				"Can't open %s: %s", filename, strerror(errno));
-		}
-		else
-		{
-			if (fstat(fd, &fstat_buf))
-			{
-				Log3(PCSC_LOG_ERROR, "Can't fstat %s: %s", filename,
-					strerror(errno));
-			}
-			else
-			{
-				/* check that the file is a FIFO */
-				if (!S_ISFIFO(fstat_buf.st_mode))
-					Log2(PCSC_LOG_ERROR, "%s is not a fifo", filename);
-				else
-					(void)SYS_WriteFile(fd, buf, sizeof(buf));
-			}
-
-			(void)SYS_CloseFile(fd);
-		}
-
-		/* remove files older than 60 seconds */
-		if ((difftime(time(NULL), fstat_buf.st_atime) > 60) && unlink(filename))
-			Log3(PCSC_LOG_ERROR, "Can't remove %s: %s", filename,
-			strerror(errno));
-	}
-	(void)closedir(dir_fd);
-
-	return 0;
-} /* StatSynchronize */
-
-
-/**
- * Sends an asynchronous event to a specific waiting client
- *
- * Just write 1 byte to an (existing) specific fifo in PCSCLITE_EVENTS_DIR
- *
- * This function must be secured since the files are created by the library
- * or any non privileged process. We must not follow symlinks for example
- */
-int StatSynchronizeContext(SCARDCONTEXT hContext)
-{
-	char filename[FILENAME_MAX];
-	int fd;
-	char buf[] = { '\0' };
-	struct stat fstat_buf;
-
-	(void)snprintf(filename, sizeof(filename), "%s/event.%d.%ld",
-		PCSCLITE_EVENTS_DIR, SYS_GetPID(), hContext);
-	fd = SYS_OpenFile(filename, O_WRONLY, 0);
-
-	if (fstat(fd, &fstat_buf))
-	{
-		Log3(PCSC_LOG_ERROR, "Can't fstat %s: %s", filename, strerror(errno));
-	}
-	else
-	{
-		/* check that the file is a FIFO */
-		if (!(fstat_buf.st_mode & S_IFIFO))
-			Log2(PCSC_LOG_ERROR, "%s is not a fifo", filename);
-		else
-			(void)SYS_WriteFile(fd, buf, sizeof(buf));
-	}
-
-	(void)SYS_CloseFile(fd);
-
-	return 0;
-} /* StatSynchronize */
-
-
-/**
  * Check is OpenCT is running and display a critical message if it is
  *
  * The first cause of pcsc-lite failure is that OpenCT is installed and running
@@ -204,10 +92,53 @@ int CheckForOpenCT(void)
 
 	if (0 == stat(OPENCT_FILE, &buf))
 	{
-		Log1(PCSC_LOG_CRITICAL, "Remove OpenCT and try again");
+		Log1(PCSC_LOG_CRITICAL, "File " OPENCT_FILE " found. Remove OpenCT and try again");
 		return 1;
 	}
 
 	return 0;
 } /* CheckForOpenCT */
 
+/**
+ * return the difference (as long int) in µs between 2 struct timeval
+ * r = a - b
+ */
+long int time_sub(struct timeval *a, struct timeval *b)
+{
+	struct timeval r;
+	r.tv_sec = a -> tv_sec - b -> tv_sec;
+	r.tv_usec = a -> tv_usec - b -> tv_usec;
+	if (r.tv_usec < 0)
+	{
+		r.tv_sec--;
+		r.tv_usec += 1000000;
+	}
+
+	return r.tv_sec * 1000000 + r.tv_usec;
+} /* time_sub */
+
+int ThreadCreate(pthread_t * pthThread, int attributes,
+	PCSCLITE_THREAD_FUNCTION(pvFunction), LPVOID pvArg)
+{
+	pthread_attr_t attr;
+	int ret;
+
+	ret = pthread_attr_init(&attr);
+	if (ret)
+		return ret;
+
+	ret = pthread_attr_setdetachstate(&attr,
+		attributes & THREAD_ATTR_DETACHED ? PTHREAD_CREATE_DETACHED : PTHREAD_CREATE_JOINABLE);
+	if (ret)
+	{
+		(void)pthread_attr_destroy(&attr);
+		return ret;
+	}
+
+	ret = pthread_create(pthThread, &attr, pvFunction, pvArg);
+	if (ret)
+		return ret;
+
+	ret = pthread_attr_destroy(&attr);
+	return ret;
+}

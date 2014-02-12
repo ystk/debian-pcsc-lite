@@ -141,7 +141,15 @@ typedef unsigned int flex_uint32_t;
 
 /* Size of default input buffer. */
 #ifndef YY_BUF_SIZE
+#ifdef __ia64__
+/* On IA-64, the buffer size is 16k, not 8k.
+ * Moreover, YY_BUF_SIZE is 2*YY_READ_BUF_SIZE in the general case.
+ * Ditto for the __ia64__ case accordingly.
+ */
+#define YY_BUF_SIZE 32768
+#else
 #define YY_BUF_SIZE 16384
+#endif /* __ia64__ */
 #endif
 
 /* The state buf must be large enough to hold one state per character in the main buffer.
@@ -465,14 +473,18 @@ char *yytext;
  *
  * MUSCLE SmartCard Development ( http://www.linuxnet.com )
  *
- * Copyright (C) 1999-2004
+ * Copyright (C) 1999-2002
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2004
  *  Damien Sauveron <damien.sauveron@labri.fr>
+ * Copyright (C) 2004-2010
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: configfile.l 3247 2009-01-02 13:22:46Z rousseau $
+ * $Id: configfile.l 6215 2012-02-04 09:08:36Z rousseau $
  */
-#line 15 "configfile.l"
+#line 17 "configfile.l"
+#include <dirent.h>
+
 #include "wintypes.h"
 #include "pcscd.h"
 #include "readerfactory.h"
@@ -485,16 +497,18 @@ static int iOldLinenumber;
 static char *pcPrevious;
 static char *pcCurrent;
 static char *pcFriendlyname;
-static char *pcDevicename;
+static const char *pcDevicename;
 static char *pcLibpath;
 static char *pcChannelid;
 static int badError;
 static SerialReader *reader_list;
 static int reader_list_size;
+const char *ConfFile;
 
 void tok_error(char *pcToken_error);
 
-#line 498 "configfile.c"
+#define YY_NO_INPUT 1
+#line 512 "configfile.c"
 
 #define INITIAL 0
 
@@ -573,7 +587,12 @@ static int input (void );
 
 /* Amount of stuff to slurp up with each read. */
 #ifndef YY_READ_BUF_SIZE
+#ifdef __ia64__
+/* On IA-64, the buffer size is 16k, not 8k */
+#define YY_READ_BUF_SIZE 16384
+#else
 #define YY_READ_BUF_SIZE 8192
+#endif /* __ia64__ */
 #endif
 
 /* Copy whatever the last rule matched to the standard output. */
@@ -581,7 +600,7 @@ static int input (void );
 /* This used to be an fputs(), but since the string might contain NUL's,
  * we now use fwrite().
  */
-#define ECHO fwrite( yytext, yyleng, 1, yyout )
+#define ECHO do { if (fwrite( yytext, yyleng, 1, yyout )) {} } while (0)
 #endif
 
 /* Gets input and stuffs it into "buf".  number of characters read, or YY_NULL,
@@ -674,10 +693,10 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 41 "configfile.l"
+#line 47 "configfile.l"
 
 
-#line 681 "configfile.c"
+#line 700 "configfile.c"
 
 	if ( !(yy_init) )
 		{
@@ -762,42 +781,42 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 43 "configfile.l"
+#line 49 "configfile.l"
 {}
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 44 "configfile.l"
+#line 50 "configfile.l"
 { iLinenumber++; }
 	YY_BREAK
 case 3:
 /* rule 3 can match eol */
 YY_RULE_SETUP
-#line 45 "configfile.l"
-{ (void)evaluatetoken( yytext); }
+#line 51 "configfile.l"
+{ (void)evaluatetoken(yytext); }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 46 "configfile.l"
+#line 52 "configfile.l"
 {}
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 47 "configfile.l"
-{ (void)evaluatetoken( yytext ); }
+#line 53 "configfile.l"
+{ (void)evaluatetoken(yytext); }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 48 "configfile.l"
-{ tok_error( yytext ); }
+#line 54 "configfile.l"
+{ iOldLinenumber = iLinenumber; tok_error(yytext); }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 49 "configfile.l"
+#line 55 "configfile.l"
 ECHO;
 	YY_BREAK
-#line 801 "configfile.c"
+#line 820 "configfile.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -1518,8 +1537,8 @@ YY_BUFFER_STATE yy_scan_string (yyconst char * yystr )
 
 /** Setup the input buffer state to scan the given bytes. The next call to yylex() will
  * scan from a @e copy of @a bytes.
- * @param bytes the byte buffer to scan
- * @param len the number of bytes in the buffer pointed to by @a bytes.
+ * @param yybytes the byte buffer to scan
+ * @param _yybytes_len the number of bytes in the buffer pointed to by @a bytes.
  * 
  * @return the newly allocated buffer state object.
  */
@@ -1758,7 +1777,7 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 49 "configfile.l"
+#line 55 "configfile.l"
 
 
 
@@ -1766,23 +1785,22 @@ void yyfree (void * ptr )
 #include <string.h>
 #include <errno.h>
 
+#include "config.h"
 #include "misc.h"
 #include "pcsclite.h"
 #include "pcscd.h"
 #include "debuglog.h"
-#include "config.h"
 #include "sys_generic.h"
 #include "readerfactory.h"
 
 int evaluatetoken(char *pcToken)
 {
-
-	DWORD dwChannelId = 0;
+	int channelId = 0;
 	int p = 0;
 	unsigned int n = 0;
 
 	if (pcPrevious == NULL)
-	{							/* This is the key */
+	{	/* This is the key */
 		pcPrevious = strdup(pcToken);
 		iOldLinenumber = iLinenumber;
 	}
@@ -1806,7 +1824,7 @@ int evaluatetoken(char *pcToken)
 				for (n = 0; n < strlen(pcCurrent); n++)
 				{
 					if (pcCurrent[n] != '"')
-					{			/* Strip off the quotes */
+					{	/* Strip off the quotes */
 						pcFriendlyname[p++] = pcCurrent[n];
 					}
 				}
@@ -1826,11 +1844,11 @@ int evaluatetoken(char *pcToken)
 
 				pcDevicename = strdup(pcCurrent);
 				if ((NULL == strchr(pcDevicename, ':'))
-					&& (SYS_Stat(pcDevicename, &fStatBuf) != 0))
+					&& (stat(pcDevicename, &fStatBuf) != 0))
 				{
 					Log3(PCSC_LOG_CRITICAL, "Error with device %s: %s",
 						pcDevicename, strerror(errno));
-					Log1(PCSC_LOG_CRITICAL, "You should use 'DEVICENAME /dev/null' if your driver does not use this field");
+					Log1(PCSC_LOG_CRITICAL, "You should remove the DEVICENAME line if your driver does not use this field");
 					badError = 1;
 				}
 			}
@@ -1847,7 +1865,7 @@ int evaluatetoken(char *pcToken)
 				struct stat fStatBuf;
 
 				pcLibpath = strdup(pcCurrent);
-				if (SYS_Stat(pcLibpath, &fStatBuf) != 0)
+				if (stat(pcLibpath, &fStatBuf) != 0)
 				{
 					Log3(PCSC_LOG_CRITICAL, "Error with library %s: %s",
 						pcLibpath, strerror(errno));
@@ -1889,7 +1907,7 @@ int evaluatetoken(char *pcToken)
 		pcPrevious = NULL;
 	}
 
-	if (pcFriendlyname != NULL && pcDevicename != NULL &&
+	if (pcFriendlyname != NULL &&
 		pcLibpath != NULL && pcChannelid != NULL && badError != 1)
 	{
 		if (0 == reader_list_size)
@@ -1908,11 +1926,15 @@ int evaluatetoken(char *pcToken)
 		/* end marker */
 		reader_list[reader_list_size-1].pcFriendlyname = NULL;
 
-		dwChannelId = strtoul(pcChannelid, 0, 16);
+		/* the DEVICENAME parameter is optional */
+		if (NULL == pcDevicename)
+			pcDevicename = "";
+
+		channelId = strtoul(pcChannelid, NULL, 0);
 		reader_list[reader_list_size-2].pcFriendlyname = strdup(pcFriendlyname);
 		reader_list[reader_list_size-2].pcDevicename = strdup(pcDevicename);
 		reader_list[reader_list_size-2].pcLibpath = strdup(pcLibpath),
-		reader_list[reader_list_size-2].dwChannelId = dwChannelId;
+		reader_list[reader_list_size-2].channelId = channelId;
 
 		pcFriendlyname = NULL;
 		pcDevicename = NULL;
@@ -1925,8 +1947,69 @@ int evaluatetoken(char *pcToken)
 
 void tok_error(char *token_error)
 {
-	Log3(PCSC_LOG_ERROR, "tok_error: invalid value line %d in " PCSCLITE_READER_CONFIG ": %s", iOldLinenumber, token_error);
+	Log4(PCSC_LOG_ERROR, "tok_error: invalid value line %d in %s: %s",
+		iOldLinenumber, ConfFile, token_error);
 	badError = 1;
+}
+
+int DBGetReaderListDir(const char *readerconf_dir,
+	SerialReader **caller_reader_list)
+{
+	DIR *dir;
+	int ret = 0;
+
+	/* (re)start with an empty list */
+	reader_list = NULL;
+	reader_list_size = 0;
+
+	dir = opendir(readerconf_dir);
+	if (dir)
+	{
+		/* the configuration file is a directory */
+		struct dirent *direntry;
+
+		Log2(PCSC_LOG_DEBUG, "Parsing conf directory: %s", readerconf_dir);
+
+		/* for each configuration file */
+		while ((direntry = readdir(dir)) != NULL)
+		{
+			char filename[FILENAME_MAX];
+			int r;
+
+			/* skip non regular files */
+			if (direntry->d_type != DT_REG)
+			{
+				Log2(PCSC_LOG_DEBUG, "Skipping non regular file: %s",
+					direntry->d_name);
+				continue;
+			}
+
+			/* skip files starting with . like ., .., .svn, etc */
+			if ('.' == direntry->d_name[0])
+			{
+				Log2(PCSC_LOG_DEBUG, "Skipping hidden file: %s",
+					direntry->d_name);
+				continue;
+			}
+
+			snprintf(filename, sizeof(filename), "%s/%s",
+				readerconf_dir, direntry->d_name);
+
+			/* each call to DBGetReaderList() will append to the list */
+			r = DBGetReaderList(filename, caller_reader_list);
+
+			/* set the global return value to the latest error */
+			if (r)
+				ret = r;
+		}
+
+		closedir(dir);
+	}
+	else
+		/* the configuration file is really a file */
+		ret = DBGetReaderList(readerconf_dir, caller_reader_list);
+
+	return ret;
 }
 
 int DBGetReaderList(const char *readerconf, SerialReader **caller_reader_list)
@@ -1934,6 +2017,11 @@ int DBGetReaderList(const char *readerconf, SerialReader **caller_reader_list)
 	FILE *configFile = NULL;
 
 	*caller_reader_list = NULL;	/* no list by default */
+
+	/* used by tok_error() */
+	ConfFile = readerconf;
+
+	Log2(PCSC_LOG_DEBUG, "Parsing conf file: %s", ConfFile);
 
 	configFile = fopen(readerconf, "r");
 
@@ -1945,8 +2033,6 @@ int DBGetReaderList(const char *readerconf, SerialReader **caller_reader_list)
 	/* (re)start with a clean state */
 	iLinenumber = 1;
 	iOldLinenumber = -1;
-	reader_list = NULL;
-	reader_list_size = 0;
 	pcFriendlyname = NULL;
 	pcDevicename = NULL;
 	pcLibpath = NULL;
@@ -1969,6 +2055,6 @@ int DBGetReaderList(const char *readerconf, SerialReader **caller_reader_list)
 		return -1;
 	else
 		return 0;
-}								/* End of configfile.c */
+} /* End of configfile.c */
 
 

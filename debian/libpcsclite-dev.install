@@ -1,5 +1,5 @@
 usr/include/PCSC/*
-usr/lib/libpcsclite.a
-usr/lib/libpcsclite.la
-usr/lib/libpcsclite.so
-usr/lib/pkgconfig/libpcsclite.pc
+usr/lib/*/libpcsclite.so
+usr/lib/*/pkgconfig/libpcsclite.pc
+usr/lib/*/libpcscspy.so*
+usr/bin/pcsc-spy

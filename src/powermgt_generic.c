@@ -3,8 +3,12 @@
  *
  * Copyright (C) 2000-2003
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2003
+ *  Antti Tapaninen
+ * Copyright (C) 2004-2009
+ *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: powermgt_generic.c 3412 2009-04-07 18:19:33Z rousseau $
+ * $Id: powermgt_generic.c 4544 2009-11-12 14:33:44Z rousseau $
  */
 
 /**

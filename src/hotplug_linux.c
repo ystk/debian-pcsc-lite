@@ -3,12 +3,13 @@
  *
  * Copyright (C) 2001-2003
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
  * The USB code was based partly on Johannes Erdfelt
  * libusb code found at libusb.sourceforge.net
  *
- * $Id: hotplug_linux.c 2896 2008-04-22 09:20:00Z rousseau $
+ * $Id: hotplug_linux.c 5993 2011-10-04 07:51:33Z rousseau $
  */
 
 /**
@@ -19,7 +20,7 @@
 #include "config.h"
 #include <string.h>
 
-#if defined(__linux__) && !defined(HAVE_LIBUSB) && !defined(HAVE_LIBHAL)
+#if defined(__linux__) && !defined(HAVE_LIBUSB) && !defined(HAVE_LIBUDEV)
 #include <sys/types.h>
 #include <stdio.h>
 #include <dirent.h>
@@ -27,6 +28,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "misc.h"
 #include "pcsclite.h"
@@ -37,14 +39,15 @@
 #include "winscard_msg.h"
 #include "sys_generic.h"
 #include "hotplug.h"
+#include "utils.h"
 
+#undef DEBUG_HOTPLUG
 #define PCSCLITE_USB_PATH		"/proc/bus/usb"
 
 #define FALSE			0
 #define TRUE			1
 
-char ReCheckSerialReaders = FALSE;
-extern PCSCLITE_MUTEX usbNotifierMutex;
+pthread_mutex_t usbNotifierMutex;
 
 struct usb_device_descriptor
 {
@@ -70,7 +73,7 @@ static LONG HPRemoveHotPluggable(int, unsigned long);
 static LONG HPReadBundleValues(void);
 static void HPEstablishUSBNotifications(void);
 
-static PCSCLITE_THREAD_T usbNotifyThread;
+static pthread_t usbNotifyThread;
 static int AraKiriHotPlug = FALSE;
 static int bundleSize = 0;
 
@@ -95,14 +98,12 @@ bundleTracker[PCSCLITE_MAX_READERS_CONTEXTS];
 
 static LONG HPReadBundleValues(void)
 {
-
 	LONG rv;
 	DIR *hpDir;
 	struct dirent *currFP = 0;
 	char fullPath[FILENAME_MAX];
 	char fullLibPath[FILENAME_MAX];
-	char keyValue[TOKEN_MAX_VALUE_SIZE];
-	int listCount = 0;
+	unsigned int listCount = 0;
 
 	hpDir = opendir(PCSCLITE_HP_DROPDIR);
 
@@ -114,11 +115,23 @@ static LONG HPReadBundleValues(void)
 		return -1;
 	}
 
+#define GET_KEY(key, values) \
+	rv = LTPBundleFindValueWithKey(&plist, key, values); \
+	if (rv) \
+	{ \
+		Log2(PCSC_LOG_ERROR, "Value/Key not defined for " key " in %s", \
+			fullPath); \
+		continue; \
+	}
+
 	while ((currFP = readdir(hpDir)) != 0)
 	{
 		if (strstr(currFP->d_name, ".bundle") != 0)
 		{
-			int alias = 0;
+			unsigned int alias;
+			list_t plist, *values;
+			list_t *manuIDs, *productIDs, *readerNames;
+			char *libraryPath;
 
 			/*
 			 * The bundle exists - let's form a full path name and get the
@@ -128,52 +141,55 @@ static LONG HPReadBundleValues(void)
 				PCSCLITE_HP_DROPDIR, currFP->d_name);
 			fullPath[FILENAME_MAX - 1] = '\0';
 
+			rv = bundleParse(fullPath, &plist);
+			if (rv)
+				continue;
+
+			/* get CFBundleExecutable */
+			GET_KEY(PCSCLITE_HP_LIBRKEY_NAME, &values)
+			libraryPath = list_get_at(values, 0);
+			(void)snprintf(fullLibPath, sizeof(fullLibPath),
+				"%s/%s/Contents/%s/%s",
+				PCSCLITE_HP_DROPDIR, currFP->d_name, PCSC_ARCH,
+				libraryPath);
+			fullLibPath[sizeof(fullLibPath) - 1] = '\0';
+
+			GET_KEY(PCSCLITE_HP_CPCTKEY_NAME, &values)
+			GET_KEY(PCSCLITE_HP_MANUKEY_NAME, &manuIDs)
+			GET_KEY(PCSCLITE_HP_PRODKEY_NAME, &productIDs)
+			GET_KEY(PCSCLITE_HP_NAMEKEY_NAME, &readerNames)
+
 			/* while we find a nth ifdVendorID in Info.plist */
-			while (LTPBundleFindValueWithKey(fullPath, PCSCLITE_HP_MANUKEY_NAME,
-				keyValue, alias) == 0)
+			for (alias=0; alias<list_size(manuIDs); alias++)
 			{
+				char *value;
+
+				/* variables entries */
+				value = list_get_at(manuIDs, alias);
+				bundleTracker[listCount].manuID = strtol(value, NULL, 16);
+
+				value = list_get_at(productIDs, alias);
+				bundleTracker[listCount].productID = strtol(value, NULL, 16);
+
+				bundleTracker[listCount].readerName = strdup(list_get_at(readerNames, alias));
+
+				/* constant entries for a same driver */
 				bundleTracker[listCount].bundleName = strdup(currFP->d_name);
+				bundleTracker[listCount].libraryPath = strdup(fullLibPath);
 
-				/* Get ifdVendorID */
-				rv = LTPBundleFindValueWithKey(fullPath, PCSCLITE_HP_MANUKEY_NAME,
-					keyValue, alias);
-				if (rv == 0)
-					bundleTracker[listCount].manuID = strtol(keyValue, 0, 16);
-
-				/* get ifdProductID */
-				rv = LTPBundleFindValueWithKey(fullPath, PCSCLITE_HP_PRODKEY_NAME,
-					keyValue, alias);
-				if (rv == 0)
-					bundleTracker[listCount].productID =
-						strtol(keyValue, 0, 16);
-
-				/* get ifdFriendlyName */
-				rv = LTPBundleFindValueWithKey(fullPath, PCSCLITE_HP_NAMEKEY_NAME,
-					keyValue, alias);
-				if (rv == 0)
-					bundleTracker[listCount].readerName = strdup(keyValue);
-
-				/* get CFBundleExecutable */
-				rv = LTPBundleFindValueWithKey(fullPath, PCSCLITE_HP_LIBRKEY_NAME,
-					keyValue, 0);
-				if (rv == 0)
-				{
-					snprintf(fullLibPath, sizeof(fullLibPath),
-						"%s/%s/Contents/%s/%s",
-						PCSCLITE_HP_DROPDIR, currFP->d_name, PCSC_ARCH, keyValue);
-					fullLibPath[sizeof(fullLibPath) - 1] = '\0';
-					bundleTracker[listCount].libraryPath = strdup(fullLibPath);
-				}
-
+#ifdef DEBUG_HOTPLUG
+				Log2(PCSC_LOG_INFO, "Found driver for: %s",
+					bundleTracker[listCount].readerName);
+#endif
 				listCount++;
-				alias++;
 
 				if (listCount >= sizeof(bundleTracker)/sizeof(bundleTracker[0]))
 				{
-					Log2(PCSC_LOG_CRITICAL, "Too many readers declared. Maximum is %d", sizeof(bundleTracker)/sizeof(bundleTracker[0]));
+					Log2(PCSC_LOG_CRITICAL, "Too many readers declared. Maximum is %zd", sizeof(bundleTracker)/sizeof(bundleTracker[0]));
 					goto end;
 				}
 			}
+			bundleRelease(&plist);
 		}
 	}
 
@@ -242,7 +258,8 @@ static void HPEstablishUSBNotifications(void)
 					continue;
 				}
 
-				sprintf(dirpath, "%s/%s", PCSCLITE_USB_PATH, entry->d_name);
+				snprintf(dirpath, sizeof dirpath, "%s/%s",
+					PCSCLITE_USB_PATH, entry->d_name);
 
 				dirB = opendir(dirpath);
 
@@ -264,8 +281,9 @@ static void HPEstablishUSBNotifications(void)
 
 					/* Get the device number so we can distinguish
 					   multiple readers */
-					sprintf(filename, "%s/%s", dirpath, entryB->d_name);
-					sscanf(entryB->d_name, "%d", &deviceNumber);
+					snprintf(filename, sizeof filename, "%s/%s",
+						dirpath, entryB->d_name);
+					deviceNumber = atoi(entryB->d_name);
 
 					fd = open(filename, O_RDONLY);
 					if (fd < 0)
@@ -314,7 +332,7 @@ static void HPEstablishUSBNotifications(void)
 
 			if (usbDeviceStatus == 1)
 			{
-				SYS_MutexLock(&usbNotifierMutex);
+				pthread_mutex_lock(&usbNotifierMutex);
 
 				for (j=0; j < PCSCLITE_MAX_READERS_CONTEXTS; j++)
 				{
@@ -331,7 +349,7 @@ static void HPEstablishUSBNotifications(void)
 					bundleTracker[i].deviceNumber[j].id = suspectDeviceNumber;
 				}
 
-				SYS_MutexUnLock(&usbNotifierMutex);
+				pthread_mutex_unlock(&usbNotifierMutex);
 			}
 			else
 				if (usbDeviceStatus == 0)
@@ -342,10 +360,10 @@ static void HPEstablishUSBNotifications(void)
 						if (bundleTracker[i].deviceNumber[j].id != 0 &&
 							bundleTracker[i].deviceNumber[j].status == 0)
 						{
-							SYS_MutexLock(&usbNotifierMutex);
+							pthread_mutex_lock(&usbNotifierMutex);
 							HPRemoveHotPluggable(i, j+1);
 							bundleTracker[i].deviceNumber[j].id = 0;
-							SYS_MutexUnLock(&usbNotifierMutex);
+							pthread_mutex_unlock(&usbNotifierMutex);
 						}
 					}
 				}
@@ -383,12 +401,12 @@ LONG HPSearchHotPluggables(void)
 		bundleTracker[i].manuID     = 0;
 
 		for (j=0; j < PCSCLITE_MAX_READERS_CONTEXTS; j++)
-			 bundleTracker[i].deviceNumber[j].id = 0;
+			bundleTracker[i].deviceNumber[j].id = 0;
 	}
 
 	HPReadBundleValues();
 
-	SYS_ThreadCreate(&usbNotifyThread, THREAD_ATTR_DETACHED,
+	ThreadCreate(&usbNotifyThread, THREAD_ATTR_DETACHED,
 		(PCSCLITE_THREAD_FUNCTION( )) HPEstablishUSBNotifications, 0);
 
 	return 0;
@@ -423,6 +441,7 @@ static LONG HPRemoveHotPluggable(int i, unsigned long usbAddr)
  */
 ULONG HPRegisterForHotplugEvents(void)
 {
+	(void)pthread_mutex_init(&usbNotifierMutex, NULL);
 	return 0;
 }
 

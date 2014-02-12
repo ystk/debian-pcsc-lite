@@ -3,8 +3,10 @@
  *
  * Copyright (C) 2000
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2002-2010
+ *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: dyn_macosx.c 2733 2008-01-14 10:51:42Z rousseau $
+ * $Id: dyn_macosx.c 5047 2010-06-29 14:39:24Z rousseau $
  */
 
 /**
@@ -16,7 +18,7 @@
 
 #include "misc.h"
 #include "pcsclite.h"
-#include "debug.h"
+#include "debuglog.h"
 #include "dyn_generic.h"
 
 #ifdef __APPLE__

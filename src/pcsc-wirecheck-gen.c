@@ -1,3 +1,10 @@
+/*
+ * Copyright (C) 2007
+ *  Jacob Berkman
+ * Copyright (C) 2007-2010
+ *  Ludovic Rousseau <ludovic.rousseau@free.fr>
+ */
+
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -81,24 +88,9 @@ check_constants (void)
     CHECK_DEFINE (PROTOCOL_VERSION_MINOR);
 
     BLANK_LINE ();
-    CHECK_DEFINE (PCSCLITE_MSG_KEY_LEN);
-    CHECK_DEFINE (PCSCLITE_MAX_MESSAGE_SIZE);
-
-    BLANK_LINE ();
     CHECK_DEFINE (MAX_READERNAME);
     CHECK_DEFINE (MAX_ATR_SIZE);
     CHECK_DEFINE (MAX_BUFFER_SIZE);
-
-    BLANK_LINE ();
-    COMMENT ("enum pcsc_adm_commands");
-    CHECK_VALUE (CMD_FUNCTION);
-    CHECK_VALUE (CMD_FAILED);
-    CHECK_VALUE (CMD_SERVER_DIED);
-    CHECK_VALUE (CMD_CLIENT_DIED);
-    CHECK_VALUE (CMD_READER_EVENT);
-    CHECK_VALUE (CMD_SYN);
-    CHECK_VALUE (CMD_ACK);
-    CHECK_VALUE (CMD_VERSION);
 
     BLANK_LINE ();
     COMMENT ("enum pcsc_msg_commands");
@@ -118,22 +110,16 @@ check_constants (void)
     CHECK_VALUE (SCARD_CANCEL_TRANSACTION);
     CHECK_VALUE (SCARD_GET_ATTRIB);
     CHECK_VALUE (SCARD_SET_ATTRIB);
+    CHECK_VALUE (CMD_VERSION);
+    CHECK_VALUE (CMD_GET_READERS_STATE);
+    CHECK_VALUE (CMD_WAIT_READER_STATE_CHANGE);
+    CHECK_VALUE (CMD_STOP_WAITING_READER_STATE_CHANGE);
 }
 
 static void
 check_types (void)
 {
     COMMENT ("Types...");
-
-    BLANK_LINE ();
-    CHECK_STRUCT (rxSharedSegment);
-    CHECK_MEMBER (rxSharedSegment, mtype);
-    CHECK_MEMBER (rxSharedSegment, user_id);
-    CHECK_MEMBER (rxSharedSegment, group_id);
-    CHECK_MEMBER (rxSharedSegment, command);
-    CHECK_MEMBER (rxSharedSegment, date);
-    CHECK_MEMBER (rxSharedSegment, key);
-    CHECK_MEMBER (rxSharedSegment, data);
 
     BLANK_LINE ();
     CHECK_STRUCT (version_struct);
@@ -194,18 +180,12 @@ check_types (void)
 
     BLANK_LINE ();
     CHECK_STRUCT (cancel_struct);
-    CHECK_MEMBER (cancel_struct, hCard);
+    CHECK_MEMBER (cancel_struct, hContext);
     CHECK_MEMBER (cancel_struct, rv);
 
     BLANK_LINE ();
     CHECK_STRUCT (status_struct);
     CHECK_MEMBER (status_struct, hCard);
-    CHECK_MEMBER (status_struct, mszReaderNames);
-    CHECK_MEMBER (status_struct, pcchReaderLen);
-    CHECK_MEMBER (status_struct, dwState);
-    CHECK_MEMBER (status_struct, dwProtocol);
-    CHECK_MEMBER (status_struct, pbAtr);
-    CHECK_MEMBER (status_struct, pcbAtrLen);
     CHECK_MEMBER (status_struct, rv);
 
     BLANK_LINE ();
@@ -213,11 +193,9 @@ check_types (void)
     CHECK_MEMBER (transmit_struct, hCard);
     CHECK_MEMBER (transmit_struct, ioSendPciProtocol);
     CHECK_MEMBER (transmit_struct, ioSendPciLength);
-    CHECK_MEMBER (transmit_struct, pbSendBuffer);
     CHECK_MEMBER (transmit_struct, cbSendLength);
     CHECK_MEMBER (transmit_struct, ioRecvPciProtocol);
     CHECK_MEMBER (transmit_struct, ioRecvPciLength);
-    CHECK_MEMBER (transmit_struct, pbRecvBuffer);
     CHECK_MEMBER (transmit_struct, pcbRecvLength);
     CHECK_MEMBER (transmit_struct, rv);
 
@@ -225,9 +203,7 @@ check_types (void)
     CHECK_STRUCT (control_struct);
     CHECK_MEMBER (control_struct, hCard);
     CHECK_MEMBER (control_struct, dwControlCode);
-    CHECK_MEMBER (control_struct, pbSendBuffer);
     CHECK_MEMBER (control_struct, cbSendLength);
-    CHECK_MEMBER (control_struct, pbRecvBuffer);
     CHECK_MEMBER (control_struct, cbRecvLength);
     CHECK_MEMBER (control_struct, dwBytesReturned);
     CHECK_MEMBER (control_struct, rv);
@@ -241,7 +217,6 @@ check_types (void)
 
     BLANK_LINE ();
     CHECK_STRUCT (pubReaderStatesList);
-    CHECK_MEMBER (pubReaderStatesList, readerID);
     CHECK_MEMBER (pubReaderStatesList, readerName);
     CHECK_MEMBER (pubReaderStatesList, readerState);
     CHECK_MEMBER (pubReaderStatesList, readerSharing);

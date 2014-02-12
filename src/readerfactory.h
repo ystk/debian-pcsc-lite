@@ -3,10 +3,10 @@
  *
  * Copyright (C) 1999
  *  David Corcoran <corcoran@linuxnet.com>
- * Copyright (C) 2004
+ * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: readerfactory.h 4289 2009-07-01 12:02:54Z rousseau $
+ * $Id: readerfactory.h 6321 2012-06-05 09:07:46Z rousseau $
  */
 
 /**
@@ -18,39 +18,19 @@
 #define __readerfactory_h__
 
 #include <inttypes.h>
+#include <pthread.h>
 
-#include "thread_generic.h"
 #include "ifdhandler.h"
 #include "pcscd.h"
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+#include "simclist.h"
 
 	typedef struct
 	{
 		char *pcFriendlyname;	/**< FRIENDLYNAME */
 		char *pcDevicename;		/**< DEVICENAME */
 		char *pcLibpath;		/**< LIBPATH */
-		int dwChannelId;		/**< CHANNELID */
+		int channelId;		/**< CHANNELID */
 	} SerialReader;
-
-	struct FctMap_V1
-	{
-		RESPONSECODE (*pvfCreateChannel)(DWORD);
-		RESPONSECODE (*pvfCloseChannel)(void);
-		RESPONSECODE (*pvfGetCapabilities)(DWORD, PUCHAR);
-		RESPONSECODE (*pvfSetCapabilities)(DWORD, PUCHAR);
-		RESPONSECODE (*pvfSetProtocolParameters)(DWORD, UCHAR, UCHAR, UCHAR,
-			UCHAR);
-		RESPONSECODE (*pvfPowerICC)(DWORD);
-		RESPONSECODE (*pvfTransmitToICC)(SCARD_IO_HEADER, PUCHAR, DWORD,
-			PUCHAR, PDWORD, PSCARD_IO_HEADER);
-		RESPONSECODE (*pvfICCPresence)(void);
-	};
-
-	typedef struct FctMap_V1 FCT_MAP_V1, *PFCT_MAP_V1;
 
 	struct FctMap_V2
 	{
@@ -70,7 +50,7 @@ extern "C"
 		RESPONSECODE (*pvfControl)(DWORD, PUCHAR, DWORD, PUCHAR, PDWORD);
 	};
 
-	typedef struct FctMap_V2 FCT_MAP_V2, *PFCT_MAP_V2;
+	typedef struct FctMap_V2 FCT_MAP_V2;
 
 	struct FctMap_V3
 	{
@@ -92,7 +72,7 @@ extern "C"
 		RESPONSECODE (*pvfCreateChannelByName)(DWORD, LPSTR);
 	};
 
-	typedef struct FctMap_V3 FCT_MAP_V3, *PFCT_MAP_V3;
+	typedef struct FctMap_V3 FCT_MAP_V3;
 
 	struct RdrCliHandles
 	{
@@ -100,81 +80,71 @@ extern "C"
 		DWORD dwEventStatus;	/**< Recent event that must be sent */
 	};
 
-	typedef struct RdrCliHandles RDR_CLIHANDLES, *PRDR_CLIHANDLES;
+	typedef struct RdrCliHandles RDR_CLIHANDLES;
 
 	struct ReaderContext
 	{
-		char lpcReader[MAX_READERNAME];	/**< Reader Name */
-		char lpcLibrary[MAX_LIBNAME];	/**< Library Path */
-		char lpcDevice[MAX_DEVICENAME];	/**< Device Name */
-		PCSCLITE_THREAD_T pthThread;	/**< Event polling thread */
-		RESPONSECODE (*pthCardEvent)(DWORD);	/**< Card Event sync */
-		PCSCLITE_MUTEX_T mMutex;	/**< Mutex for this connection */
-		RDR_CLIHANDLES psHandles[PCSCLITE_MAX_READER_CONTEXT_CHANNELS];
+		char *library;	/**< Library Path */
+		char *device;	/**< Device Name */
+		pthread_t pthThread;	/**< Event polling thread */
+		RESPONSECODE (*pthCardEvent)(DWORD, int);	/**< Card Event sync */
+		pthread_mutex_t *mMutex;	/**< Mutex for this connection */
+		list_t handlesList;
+		pthread_mutex_t handlesList_lock;	/**< lock for the above list */
                                          /**< Structure of connected handles */
 		union
 		{
-			FCT_MAP_V1 psFunctions_v1;	/**< API V1.0 */
 			FCT_MAP_V2 psFunctions_v2;	/**< API V2.0 */
 			FCT_MAP_V3 psFunctions_v3;	/**< API V3.0 */
 		} psFunctions;	/**< driver functions */
 
 		LPVOID vHandle;			/**< Dlopen handle */
-		DWORD dwVersion;		/**< IFD Handler version number */
-		DWORD dwPort;			/**< Port ID */
-		DWORD dwSlot;			/**< Current Reader Slot */
-		DWORD dwBlockStatus;	/**< Current blocking status */
-		DWORD dwLockId;			/**< Lock Id */
-		DWORD dwIdentity;		/**< Shared ID High Nibble */
+		int version;			/**< IFD Handler version number */
+		int port;				/**< Port ID */
+		int slot;				/**< Current Reader Slot */
+		SCARDHANDLE hLockId;	/**< Lock Id */
 		int LockCount;			/**< number of recursive locks */
-		int32_t dwContexts;		/**< Number of open contexts */
-		PDWORD pdwFeeds;		/**< Number of shared client to lib */
-		PDWORD pdwMutex;		/**< Number of client to mutex */
+		int32_t contexts;		/**< Number of open contexts */
+		int * pFeeds;			/**< Number of shared client to lib */
+		int * pMutex;			/**< Number of client to mutex */
+		int powerState;			/**< auto power off state */
+		pthread_mutex_t powerState_lock;	/**< powerState mutex */
 
 		struct pubReaderStatesList *readerState; /**< link to the reader state */
-		/* we can't use PREADER_STATE here since eventhandler.h can't be
+		/* we can't use READER_CONTEXT * here since eventhandler.h can't be
 		 * included because of circular dependencies */
 	};
 
-	typedef struct ReaderContext READER_CONTEXT, *PREADER_CONTEXT;
+	typedef struct ReaderContext READER_CONTEXT;
 
-	LONG RFAllocateReaderSpace(void);
-	LONG RFAddReader(LPSTR, DWORD, LPSTR, LPSTR);
-	LONG RFRemoveReader(LPSTR, DWORD);
-	LONG RFSetReaderName(PREADER_CONTEXT, LPSTR, LPSTR, DWORD, DWORD);
-	LONG RFListReaders(LPSTR, LPDWORD);
-	LONG RFReaderInfo(LPSTR, /*@out@*/ struct ReaderContext **);
-	LONG RFReaderInfoNamePort(DWORD, LPSTR, /*@out@*/ struct ReaderContext **);
-	LONG RFReaderInfoById(DWORD, /*@out@*/ struct ReaderContext **);
-	LONG RFCheckSharing(DWORD);
-	LONG RFLockSharing(DWORD);
-	LONG RFUnlockSharing(DWORD);
-	LONG RFUnlockAllSharing(DWORD);
-	LONG RFUnblockReader(PREADER_CONTEXT);
-	LONG RFUnblockContext(SCARDCONTEXT);
-	LONG RFLoadReader(PREADER_CONTEXT);
-	LONG RFBindFunctions(PREADER_CONTEXT);
-	LONG RFUnBindFunctions(PREADER_CONTEXT);
-	LONG RFUnloadReader(PREADER_CONTEXT);
-	LONG RFInitializeReader(PREADER_CONTEXT);
-	LONG RFUnInitializeReader(PREADER_CONTEXT);
-	SCARDHANDLE RFCreateReaderHandle(PREADER_CONTEXT);
+	LONG RFAllocateReaderSpace(unsigned int);
+	LONG RFAddReader(const char *, int, const char *, const char *);
+	LONG RFRemoveReader(const char *, int);
+	LONG RFSetReaderName(READER_CONTEXT *, const char *, const char *, int);
+	LONG RFReaderInfo(const char *, /*@out@*/ struct ReaderContext **);
+	LONG RFReaderInfoNamePort(int, const char *, /*@out@*/ struct ReaderContext **);
+	LONG RFReaderInfoById(SCARDHANDLE, /*@out@*/ struct ReaderContext **);
+	LONG RFCheckSharing(SCARDHANDLE, READER_CONTEXT *);
+	LONG RFLockSharing(SCARDHANDLE, READER_CONTEXT *);
+	LONG RFUnlockSharing(SCARDHANDLE, READER_CONTEXT *);
+	LONG RFUnlockAllSharing(SCARDHANDLE, READER_CONTEXT *);
+	LONG RFLoadReader(READER_CONTEXT *);
+	LONG RFBindFunctions(READER_CONTEXT *);
+	LONG RFUnBindFunctions(READER_CONTEXT *);
+	LONG RFUnloadReader(READER_CONTEXT *);
+	LONG RFInitializeReader(READER_CONTEXT *);
+	LONG RFUnInitializeReader(READER_CONTEXT *);
+	SCARDHANDLE RFCreateReaderHandle(READER_CONTEXT *);
 	LONG RFDestroyReaderHandle(SCARDHANDLE hCard);
-	LONG RFAddReaderHandle(PREADER_CONTEXT, SCARDHANDLE);
-	LONG RFFindReaderHandle(SCARDHANDLE);
-	LONG RFRemoveReaderHandle(PREADER_CONTEXT, SCARDHANDLE);
-	LONG RFSetReaderEventState(PREADER_CONTEXT, DWORD);
-	LONG RFCheckReaderEventState(PREADER_CONTEXT, SCARDHANDLE);
-	LONG RFClearReaderEventState(PREADER_CONTEXT, SCARDHANDLE);
-	LONG RFCheckReaderStatus(PREADER_CONTEXT);
-	void RFCleanupReaders(int);
+	LONG RFAddReaderHandle(READER_CONTEXT *, SCARDHANDLE);
+	LONG RFRemoveReaderHandle(READER_CONTEXT *, SCARDHANDLE);
+	LONG RFSetReaderEventState(READER_CONTEXT *, DWORD);
+	LONG RFCheckReaderEventState(READER_CONTEXT *, SCARDHANDLE);
+	LONG RFClearReaderEventState(READER_CONTEXT *, SCARDHANDLE);
+	LONG RFCheckReaderStatus(READER_CONTEXT *);
+	void RFCleanupReaders(void);
+	void RFWaitForReaderInit(void);
 	int RFStartSerialReaders(const char *readerconf);
 	void RFReCheckReaderConf(void);
-	void RFSuspendAllReaders(void);
-	void RFAwakeAllReaders(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

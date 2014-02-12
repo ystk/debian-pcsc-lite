@@ -1,17 +1,17 @@
 Source: pcsc-lite
 Section: misc
-Priority: extra
+Priority: optional
 Maintainer: Ludovic Rousseau <rousseau@debian.org>
-Build-Depends: debhelper (>= 7), flex, autotools-dev, libhal-dev
-Standards-Version: 3.8.4
+Build-Depends: debhelper (>= 9), flex, autotools-dev, libudev-dev [linux-any], libusb2-dev [kfreebsd-any], pkg-config, dpkg-dev (>= 1.16.1~)
+Standards-Version: 3.9.3
 Vcs-Svn: svn://svn.debian.org/svn/collab-maint/deb-maint/pcsc-lite/trunk
 Vcs-Browser: http://svn.debian.org/viewsvn/collab-maint/deb-maint/pcsc-lite/trunk/
 Homepage: http://pcsclite.alioth.debian.org/
 
 Package: pcscd
 Architecture: any
-Depends: libccid | pcsc-ifd-handler, ${shlibs:Depends}, ${misc:Depends}, lsb-base (>= 3.0-6), hal
-Conflicts: libccid (<= 1.0.0-1)
+Depends: libccid (>= 1.4.1~) | pcsc-ifd-handler, ${shlibs:Depends}, ${misc:Depends}, lsb-base (>= 3.0-6), adduser, libpcsclite1 (= ${binary:Version})
+Suggests: systemd
 Description: Middleware to access a smart card using PC/SC (daemon side)
  The purpose of PC/SC Lite is to provide a Windows(R) SCard interface
  in a very small form factor for communicating to smart cards and
@@ -22,9 +22,10 @@ Description: Middleware to access a smart card using PC/SC (daemon side)
 
 Package: libpcsclite-dev
 Section: libdevel
-Priority: optional
 Architecture: any
-Depends: libpcsclite1 (= ${binary:Version}), ${misc:Depends}
+Depends: libpcsclite1 (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+Pre-Depends: ${misc:Pre-Depends}
+Recommends: python
 Description: Middleware to access a smart card using PC/SC (development files)
  The purpose of PC/SC Lite is to provide a Windows(R) SCard interface
  in a very small form factor for communicating to smart cards and
@@ -33,14 +34,31 @@ Description: Middleware to access a smart card using PC/SC (development files)
  This package contains the files needed for compiling and linking
  an application that communicates to any reader available to the
  PC/SC daemon.
+ .
+ This package also contains the PC/SC spying library: libpcscspy.so
+ See http://ludovicrousseau.blogspot.com/2011/11/pcsc-api-spy-third-try.html
+
+Package: libpcsclite-dbg
+Section: debug
+Architecture: any
+Priority: extra
+Depends: libpcsclite1 (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+Description: Middleware to access a smart card using PC/SC (debugging symbols)
+ The purpose of PC/SC Lite is to provide a Windows(R) SCard interface
+ in a very small form factor for communicating to smart cards and
+ smart cards readers.
+ .
+ This package contains the detached debugging symbols to be used for
+ debugging the applications using PC/SC Lite.
 
 Package: libpcsclite1
 Section: libs
-Priority: optional
 Architecture: any
-Conflicts: libpcsclite-dev (<< ${binary:Version}), pcscd (<< ${binary:Version})
+Breaks: libpcsclite-dev (<< ${binary:Version}), pcscd (<< ${binary:Version})
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Suggests: pcscd
+Pre-Depends: ${misc:Pre-Depends}
+Multi-Arch: same
+Suggests: pcscd (= ${binary:Version})
 Description: Middleware to access a smart card using PC/SC (library)
  The purpose of PC/SC Lite is to provide a Windows(R) SCard interface
  in a very small form factor for communicating to smartcards and

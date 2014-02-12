@@ -1,122 +1,15 @@
 #!/usr/bin/make -f
-# Sample debian/rules that uses debhelper.
-# GNU copyright 1997 to 1999 by Joey Hess.
 
-# Uncomment this to turn on verbose mode.
-#export DH_VERBOSE=1
-
-export DEB_HOST_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
-export DEB_BUILD_GNU_TYPE ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
-
-# FOR AUTOCONF 2.52 AND NEWER ONLY
-ifeq ($(DEB_BUILD_GNU_TYPE), $(DEB_HOST_GNU_TYPE))
-  confflags += --build $(DEB_HOST_GNU_TYPE)
-else
-  confflags += --build $(DEB_BUILD_GNU_TYPE) --host $(DEB_HOST_GNU_TYPE)
+DEB_HOST_ARCH_OS ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+ifeq ($(DEB_HOST_ARCH_OS),hurd)
+  EXTRA_CONFIGURE_ARGS += --disable-usb
 endif
 
-# see http://www.debian.org/doc/debian-policy/ch-files.html
-CFLAGS = -Wall -g -D_REENTRANT
-INSTALL = install
-INSTALL_FILE    = $(INSTALL) -p    -o root -g root  -m  644
-INSTALL_PROGRAM = $(INSTALL) -p    -o root -g root  -m  755
-INSTALL_SCRIPT  = $(INSTALL) -p    -o root -g root  -m  755
-INSTALL_DIR     = $(INSTALL) -p -d -o root -g root  -m  755
+%:
+	dh $@
 
-ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
-	CFLAGS += -O0
-else
-	CFLAGS += -O2
-endif
+override_dh_auto_configure:
+	dh_auto_configure -- $(EXTRA_CONFIGURE_ARGS) --with-systemdsystemunitdir=/lib/systemd/system --enable-usbdropdir=/usr/lib/pcsc/drivers $(shell dpkg-buildflags --export=configure)
 
-ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
-	NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
-	MAKEFLAGS += -j$(NUMJOBS)
-endif
-
-ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
-	INSTALL_PROGRAM += -s
-endif
-
-configure: configure-stamp
-configure-stamp:
-	dh_testdir
-
-	ln -sf /usr/share/misc/config.sub .
-	ln -sf /usr/share/misc/config.guess .
-	rm -f config.cache
-
-	# we add LDFLAGS="-lpthread" for bug #253629
-	./configure $(confflags) \
-		--enable-confdir=/var/lib/pcscd \
-		--prefix=/usr \
-		--enable-usbdropdir=/usr/lib/pcsc/drivers \
-		INSTALL_PROGRAM="$(INSTALL_PROGRAM)" \
-		CFLAGS="${CFLAGS}" \
-		LDFLAGS="-lpthread"
-
-	touch configure-stamp
-
-build: configure-stamp build-stamp
-build-stamp: configure-stamp
-	dh_testdir
-
-	# Add here commands to compile the package.
-	$(MAKE)
-
-	touch build-stamp
-
-clean:
-	dh_testdir
-	dh_testroot
-
-	# Add here commands to clean up after the build process.
-	-test -e Makefile && \
-	  $(MAKE) distclean
-	rm -f conftest.c conftest.o
-
-	dh_clean
-
-install: build
-	dh_testdir
-	dh_testroot
-	dh_prep
-	dh_installdirs
-
-	# Add here commands to install the package into debian/tmp.
-	$(MAKE) install DESTDIR=`pwd`/debian/tmp
-	
-	# Move update-reader.conf files
-	install -m 755 debian/update-reader.conf `pwd`/debian/tmp/usr/sbin/
-	install -D -m 644 debian/0comments `pwd`/debian/tmp/etc/reader.conf.d/0comments
-
-# Build architecture-independent files here.
-binary-indep: build install
-# We have nothing to do by default.
-
-# Build architecture-dependent files here.
-binary-arch: build install
-	dh_testdir
-	dh_testroot
-	dh_install --sourcedir=debian/tmp
-	dh_installdocs
-	dh_installexamples
-	# use 50 to start _after_ usbmgr with level 45 (see #146151)
-	dh_installinit --update-rcd-params="defaults 50"
-	dh_installman
-	dh_lintian
-	dh_installchangelogs ChangeLog
-	dh_link
-	dh_strip
-	dh_compress
-	dh_fixperms
-	dh_makeshlibs --version-info
-	dh_installdeb
-	dh_shlibdeps -l debian/tmp/usr/lib/
-	dh_gencontrol
-	dh_md5sums
-	dh_builddeb
-
-binary: binary-indep binary-arch
-.PHONY: build clean binary-indep binary-arch binary install configure
-
+override_dh_strip:
+	dh_strip --dbg-package=libpcsclite-dbg

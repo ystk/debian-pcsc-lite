@@ -3,8 +3,10 @@
  *
  * Copyright (C) 2000-2003
  *  David Corcoran <corcoran@linuxnet.com>
+ * Copyright (C) 2002-2011
+ *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: hotplug_generic.c 2748 2008-01-21 09:10:58Z rousseau $
+ * $Id: hotplug_generic.c 5711 2011-05-05 09:02:08Z rousseau $
  */
 
 /**
@@ -25,9 +27,7 @@
 #define FALSE 0
 #endif
 
-#if !defined(__APPLE__) && !defined(HAVE_LIBUSB) && !defined(__linux__) && !defined(HAVE_LIBHAL)
-
-char ReCheckSerialReaders = FALSE;
+#if !defined(__APPLE__) && !defined(HAVE_LIBUSB) && !defined(__linux__) && !defined(HAVE_LIBUDEV)
 
 LONG HPSearchHotPluggables(void)
 {
@@ -46,7 +46,6 @@ LONG HPStopHotPluggables(void)
 
 void HPReCheckSerialReaders(void)
 {
-	ReCheckSerialReaders = TRUE;
 }
 
 #endif

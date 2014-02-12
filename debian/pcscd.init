@@ -24,7 +24,8 @@ PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="PCSC Lite resource manager"
 NAME=pcscd
 DAEMON=/usr/sbin/$NAME
-PIDFILE=/var/run/pcscd/$NAME.pid
+IPCDIR=/var/run/pcscd
+PIDFILE=$IPCDIR/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
 
 # if you need to pass arguments to pcscd you should edit the file
@@ -39,6 +40,14 @@ SCRIPTNAME=/etc/init.d/$NAME
 
 # Load the VERBOSE setting and other rcS variables
 . /lib/init/vars.sh
+
+# Do not start at boot using systemd but start using on-demand
+# http://ludovicrousseau.blogspot.com/2011/11/pcscd-auto-start-using-systemd.html
+if [ $1 = "start" -a -d /sys/fs/cgroup/systemd ]
+then
+	# Do not start from this script
+	exit 0
+fi
 
 # Define LSB log_* functions.
 # Depend on lsb-base (>= 3.0-6) to ensure that this file is present.
@@ -57,6 +66,14 @@ eval LANG=$value
 #
 do_start()
 {
+	# create $IPCDIR with correct access rights
+	if [ ! -d $IPCDIR ]
+	then
+		rm -rf $IPCDIR
+		mkdir $IPCDIR
+	fi
+	chmod 0775 $IPCDIR
+
 	# Return
 	#   0 if daemon has been started
 	#   1 if daemon was already running
@@ -116,15 +133,9 @@ case "$1" in
 		2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
 	esac
 	;;
-  #reload|force-reload)
-	#
-	# If do_reload() is not implemented then leave this commented out
-	# and leave 'force-reload' as an alias for 'restart'.
-	#
-	#log_daemon_msg "Reloading $DESC" "$NAME"
-	#do_reload
-	#log_end_msg $?
-	#;;
+  status)
+	  status_of_proc -p "$PIDFILE" "$DAEMON" "$NAME" && exit 0 || exit $?
+	  ;;
   restart|force-reload)
 	#
 	# If the "reload" option is implemented then remove the
@@ -148,8 +159,7 @@ case "$1" in
 	esac
 	;;
   *)
-	#echo "Usage: $SCRIPTNAME {start|stop|restart|reload|force-reload}" >&2
-	echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload}" >&2
+	echo "Usage: $SCRIPTNAME {start|stop|status|restart|force-reload}" >&2
 	exit 3
 	;;
 esac

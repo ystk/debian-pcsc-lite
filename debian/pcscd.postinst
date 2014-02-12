@@ -2,9 +2,21 @@
 
 set -e
 
-# regenerate /etc/reader.conf
-if [ -x /usr/sbin/update-reader.conf ]; then
-  update-reader.conf || true;
+OLDCFGFILE=/etc/reader.conf
+CFGDIR=/var/lib/pcscd
+CFGFILE="$CFGDIR/reader.conf"
+
+# /etc/reader.conf is no more used
+if [ -f $OLDCFGFILE ]; then
+	mv $OLDCFGFILE $OLDCFGFILE.old
 fi
+
+# remove /var/lib/pcscd
+if [ -d $CFGDIR ]; then
+	rm -rf $CFGDIR
+fi
+
+# enable pcscd for systemd
+[ -x /bin/systemctl ] && [ -d /run/systemd/system ] && systemctl enable pcscd.socket
 
 #DEBHELPER#

@@ -3,10 +3,10 @@
  *
  * Copyright (C) 1999-2002
  *  David Corcoran <corcoran@linuxnet.com>
- * Copyright (C) 1999-2005
+ * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: debuglog.c 4241 2009-06-02 13:50:52Z rousseau $
+ * $Id: debuglog.c 6229 2012-02-21 08:49:21Z rousseau $
  */
 
 /**
@@ -34,13 +34,55 @@
 #include "sys_generic.h"
 #include "strlcpycat.h"
 
-/**
- * Max string size when dumping a 256 bytes longs APDU
- * Should be bigger than 256*3+30
- */
-#define DEBUG_BUF_SIZE 2048
+#ifdef NO_LOG
 
-static char LogSuppress = DEBUGLOG_LOG_ENTRIES;
+void log_msg(const int priority, const char *fmt, ...)
+{
+	(void)priority;
+	(void)fmt;
+}
+
+void log_xxd(const int priority, const char *msg, const unsigned char *buffer,
+	const int len)
+{
+	(void)priority;
+	(void)msg;
+	(void)buffer;
+	(void)len;
+}
+
+void DebugLogSetLogType(const int dbgtype)
+{
+	(void)dbgtype;
+}
+
+void DebugLogSetLevel(const int level)
+{
+	(void)level;
+}
+
+INTERNAL int DebugLogSetCategory(const int dbginfo)
+{
+	(void)dbginfo;
+
+	return 0;
+}
+
+INTERNAL void DebugLogCategory(const int category, const unsigned char *buffer,
+	const int len)
+{
+	(void)category;
+	(void)buffer;
+	(void)len;
+}
+
+#else
+
+/**
+ * Max string size dumping a maxmium of 2 lines of 80 characters
+ */
+#define DEBUG_BUF_SIZE 160
+
 static char LogMsgType = DEBUGLOG_NO_DEBUG;
 static char LogCategory = DEBUG_CATEGORY_NOTHING;
 
@@ -56,13 +98,12 @@ void log_msg(const int priority, const char *fmt, ...)
 	char DebugBuffer[DEBUG_BUF_SIZE];
 	va_list argptr;
 
-	if ((LogSuppress != DEBUGLOG_LOG_ENTRIES)
-		|| (priority < LogLevel) /* log priority lower than threshold? */
+	if ((priority < LogLevel) /* log priority lower than threshold? */
 		|| (DEBUGLOG_NO_DEBUG == LogMsgType))
 		return;
 
 	va_start(argptr, fmt);
-	vsnprintf(DebugBuffer, DEBUG_BUF_SIZE, fmt, argptr);
+	vsnprintf(DebugBuffer, sizeof DebugBuffer, fmt, argptr);
 	va_end(argptr);
 
 	log_line(priority, DebugBuffer);
@@ -74,14 +115,33 @@ static void log_line(const int priority, const char *DebugBuffer)
 		syslog(LOG_INFO, "%s", DebugBuffer);
 	else
 	{
+		static struct timeval last_time = { 0, 0 };
+		struct timeval new_time = { 0, 0 };
+		struct timeval tmp;
+		int delta;
+
+		gettimeofday(&new_time, NULL);
+		if (0 == last_time.tv_sec)
+			last_time = new_time;
+
+		tmp.tv_sec = new_time.tv_sec - last_time.tv_sec;
+		tmp.tv_usec = new_time.tv_usec - last_time.tv_usec;
+		if (tmp.tv_usec < 0)
+		{
+			tmp.tv_sec--;
+			tmp.tv_usec += 1000000;
+		}
+		if (tmp.tv_sec < 100)
+			delta = tmp.tv_sec * 1000000 + tmp.tv_usec;
+		else
+			delta = 99999999;
+
+		last_time = new_time;
+
 		if (LogDoColor)
 		{
 			const char *color_pfx = "", *color_sfx = "\33[0m";
 			const char *time_pfx = "\33[36m", *time_sfx = color_sfx;
-			static struct timeval last_time = { 0, 0 };
-			struct timeval new_time = { 0, 0 };
-			struct timeval tmp;
-			int delta;
 
 			switch (priority)
 			{
@@ -103,53 +163,34 @@ static void log_line(const int priority, const char *DebugBuffer)
 					break;
 			}
 
-			gettimeofday(&new_time, NULL);
-			if (0 == last_time.tv_sec)
-				last_time = new_time;
-
-			tmp.tv_sec = new_time.tv_sec - last_time.tv_sec;
-			tmp.tv_usec = new_time.tv_usec - last_time.tv_usec;
-			if (tmp.tv_usec < 0)
-			{
-				tmp.tv_sec--;
-				tmp.tv_usec += 1000000;
-			}
-			if (tmp.tv_sec < 100)
-				delta = tmp.tv_sec * 1000000 + tmp.tv_usec;
-			else
-				delta = 99999999;
-
-			fprintf(stderr, "%s%.8d%s %s%s%s\n", time_pfx, delta, time_sfx,
+			printf("%s%.8d%s %s%s%s\n", time_pfx, delta, time_sfx,
 				color_pfx, DebugBuffer, color_sfx);
-			last_time = new_time;
 		}
 		else
-			fprintf(stderr, "%s\n", DebugBuffer);
+		{
+			printf("%.8d %s\n", delta, DebugBuffer);
+		}
+		fflush(stdout);
 	}
 } /* log_msg */
 
 static void log_xxd_always(const int priority, const char *msg,
 	const unsigned char *buffer, const int len)
 {
-	char DebugBuffer[DEBUG_BUF_SIZE];
+	char DebugBuffer[len*3 + strlen(msg) +1];
 	int i;
 	char *c;
-	char *debug_buf_end;
+	size_t l;
 
-	debug_buf_end = DebugBuffer + DEBUG_BUF_SIZE - 5;
+	l = strlcpy(DebugBuffer, msg, sizeof(DebugBuffer));
+	c = DebugBuffer + l;
 
-	strlcpy(DebugBuffer, msg, sizeof(DebugBuffer));
-	c = DebugBuffer + strlen(DebugBuffer);
-
-	for (i = 0; (i < len) && (c < debug_buf_end); ++i)
+	for (i = 0; (i < len); ++i)
 	{
-		sprintf(c, "%02X ", buffer[i]);
+		/* 2 hex characters, 1 space, 1 NUL : total 4 characters */
+		snprintf(c, 4, "%02X ", buffer[i]);
 		c += 3;
 	}
-
-	/* the buffer is too small so end it with "..." */
-	if ((c >= debug_buf_end) && (i < len))
-		c[-3] = c[-2] = c[-1] = '.';
 
 	log_line(priority, DebugBuffer);
 } /* log_xxd_always */
@@ -157,20 +198,16 @@ static void log_xxd_always(const int priority, const char *msg,
 void log_xxd(const int priority, const char *msg, const unsigned char *buffer,
 	const int len)
 {
-	if ((LogSuppress != DEBUGLOG_LOG_ENTRIES)
-		|| (priority < LogLevel) /* log priority lower than threshold? */
+	if ((priority < LogLevel) /* log priority lower than threshold? */
 		|| (DEBUGLOG_NO_DEBUG == LogMsgType))
+		return;
+
+	/* len is an error value? */
+	if (len < 0)
 		return;
 
 	log_xxd_always(priority, msg, buffer, len);
 } /* log_xxd */
-
-#ifdef PCSCD
-void DebugLogSuppress(const int lSType)
-{
-	LogSuppress = lSType;
-}
-#endif
 
 void DebugLogSetLogType(const int dbgtype)
 {
@@ -178,19 +215,21 @@ void DebugLogSetLogType(const int dbgtype)
 	{
 		case DEBUGLOG_NO_DEBUG:
 		case DEBUGLOG_SYSLOG_DEBUG:
-		case DEBUGLOG_STDERR_DEBUG:
+		case DEBUGLOG_STDOUT_DEBUG:
+		case DEBUGLOG_STDOUT_COLOR_DEBUG:
 			LogMsgType = dbgtype;
 			break;
 		default:
-			Log2(PCSC_LOG_CRITICAL, "unknown log type (%d), using stderr",
+			Log2(PCSC_LOG_CRITICAL, "unknown log type (%d), using stdout",
 				dbgtype);
-			LogMsgType = DEBUGLOG_STDERR_DEBUG;
+			LogMsgType = DEBUGLOG_STDOUT_DEBUG;
 	}
 
-	/* log to stderr and stderr is a tty? */
-	if (DEBUGLOG_STDERR_DEBUG == LogMsgType && isatty(fileno(stderr)))
+	/* log to stdout and stdout is a tty? */
+	if ((DEBUGLOG_STDOUT_DEBUG == LogMsgType && isatty(fileno(stdout)))
+		|| (DEBUGLOG_STDOUT_COLOR_DEBUG == LogMsgType))
 	{
-		const char *terms[] = { "linux", "xterm", "xterm-color", "Eterm", "rxvt", "rxvt-unicode" };
+		const char *terms[] = { "linux", "xterm", "xterm-color", "Eterm", "rxvt", "rxvt-unicode", "xterm-256color" };
 		char *term;
 
 		term = getenv("TERM");
@@ -284,18 +323,17 @@ void debug_msg(const char *fmt, ...)
 	char DebugBuffer[DEBUG_BUF_SIZE];
 	va_list argptr;
 
-	if ((LogSuppress != DEBUGLOG_LOG_ENTRIES)
-		|| (DEBUGLOG_NO_DEBUG == LogMsgType))
+	if (DEBUGLOG_NO_DEBUG == LogMsgType)
 		return;
 
 	va_start(argptr, fmt);
-	vsnprintf(DebugBuffer, DEBUG_BUF_SIZE, fmt, argptr);
+	vsnprintf(DebugBuffer, sizeof DebugBuffer, fmt, argptr);
 	va_end(argptr);
 
 	if (DEBUGLOG_SYSLOG_DEBUG == LogMsgType)
 		syslog(LOG_INFO, "%s", DebugBuffer);
 	else
-		fprintf(stderr, "%s\n", DebugBuffer);
+		puts(DebugBuffer);
 } /* debug_msg */
 
 void debug_xxd(const char *msg, const unsigned char *buffer, const int len);
@@ -304,4 +342,6 @@ void debug_xxd(const char *msg, const unsigned char *buffer, const int len)
 	log_xxd(PCSC_LOG_ERROR, msg, buffer, len);
 } /* debug_xxd */
 #endif
+
+#endif	/* NO_LOG */
 

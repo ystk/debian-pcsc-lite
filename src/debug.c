@@ -3,10 +3,10 @@
  *
  * Copyright (C) 1999-2002
  *  David Corcoran <corcoran@linuxnet.com>
- * Copyright (C) 1999-2008
+ * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: debuglog.c 1953 2006-03-21 13:46:28Z rousseau $
+ * $Id: debug.c 5898 2011-08-21 13:53:27Z rousseau $
  */
 
 /**
@@ -19,11 +19,22 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdio.h>
 
-#include "debug.h"
+#include "debuglog.h"
 #include "strlcpycat.h"
 
 #define DEBUG_BUF_SIZE 2048
+
+#ifdef NO_LOG
+
+void log_msg(const int priority, const char *fmt, ...)
+{
+	(void)priority;
+	(void)fmt;
+}
+
+#else
 
 /** default level is quiet to avoid polluting fd 2 (possibly NOT stderr) */
 static char LogLevel = PCSC_LOG_CRITICAL+1;
@@ -117,28 +128,5 @@ void log_msg(const int priority, const char *fmt, ...)
 	}
 } /* log_msg */
 
-void log_xxd(const int priority, const char *msg, const unsigned char *buffer,
-	const int len)
-{
-	char DebugBuffer[DEBUG_BUF_SIZE];
-	int i;
-	char *c;
-	char *debug_buf_end;
-
-	if (priority < LogLevel) /* log priority lower than threshold? */
-		return;
-
-	debug_buf_end = DebugBuffer + DEBUG_BUF_SIZE - 5;
-
-	(void)strlcpy(DebugBuffer, msg, sizeof(DebugBuffer));
-	c = DebugBuffer + strlen(DebugBuffer);
-
-	for (i = 0; (i < len) && (c < debug_buf_end); ++i)
-	{
-		sprintf(c, "%02X ", buffer[i]);
-		c += strlen(c);
-	}
-
-	fprintf(stderr, "%s\n", DebugBuffer);
-} /* log_xxd */
+#endif
 
