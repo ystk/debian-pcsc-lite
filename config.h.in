@@ -1,4 +1,4 @@
-/* config.h.in.  Generated from configure.in by autoheader.  */
+/* config.h.in.  Generated from configure.ac by autoheader.  */
 
 /* Define if building universal (internal helper macro) */
 #undef AC_APPLE_UNIVERSAL_BUILD
@@ -51,11 +51,17 @@
 /* Define to 1 if you have the `nanosleep' function. */
 #undef HAVE_NANOSLEEP
 
+/* Build polkit access control support */
+#undef HAVE_POLKIT
+
 /* Define if you have POSIX threads libraries and header files. */
 #undef HAVE_PTHREAD
 
 /* Define to 1 if you have the `pthread_cancel' function. */
 #undef HAVE_PTHREAD_CANCEL
+
+/* Have PTHREAD_PRIO_INHERIT. */
+#undef HAVE_PTHREAD_PRIO_INHERIT
 
 /* Define to 1 if `stat' has the bug that it succeeds when given the
    zero-length file name argument. */
@@ -116,9 +122,6 @@
 
 /* Disable logging support */
 #undef NO_LOG
-
-/* Define to 1 if your C compiler doesn't accept -c and -o together. */
-#undef NO_MINUS_C_MINUS_O
 
 /* Name of package */
 #undef PACKAGE

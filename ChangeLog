@@ -1,3 +1,93 @@
+pcsc-lite-1.8.11: Ludovic Rousseau
+14 February 2014
+- Add polkit support. See doc/README.polkit
+- /etc/reader.conf: CHANNELID and DEVICENAME are both optional but not
+  at the same time
+- Some other minor improvements and bug corrections
+
+
+pcsc-lite-1.8.10: Ludovic Rousseau
+19 October 2013
+- do not export the internal log_msg symbol from libpcsclite.so.1
+
+
+pcsc-lite-1.8.9: Ludovic Rousseau
+16 October 2013
+- SCardEndTransaction(): Return an error if is called with no
+  corresponding SCardBeginTransaction()
+- SCardGetAttrib(): Add support of SCARD_ATTR_DEVICE_SYSTEM_NAME
+- SCardGetAttrib(): Fix bug in SCARD_ATTR_DEVICE_FRIENDLY_NAME
+- SCardBeginTransaction() was not correctly releasing a mutex when the
+  hCard handle was invalidated
+  The problem was that SCardGetStatusChange() was blocked because
+  SCardBeginTransaction() had not released the context mutex.
+- PCSC/reader.h: Use C99 flexible array member
+  The structures PIN_MODIFY_STRUCTURE and PIN_VERIFY_STRUCTURE now use a
+  C99 flexible array member when available for abData field.
+  uint8_t abData[];
+- Add support of --reader-name-no-serial and --reader-name-no-interface
+  It is now possible to NOT add the USB serial number of the reader
+  using --reader-name-no-serial
+  It is now possible to NOT add the CCID interface name of the reader
+  using --reader-name-no-interface
+- Add support of serialconfdir pkg-config variable
+  It is now possible to use pkg-config to get the directory used by
+  pcscd to fetch serial drivers configurations.
+  $ pkg-config libpcsclite --variable=serialconfdir
+  /etc/reader.conf.d
+- pcsc-spy: Try to display the thread in the order they appear in the log
+- pcsc-spy: Add SCARD_ATTR_DEVICE_SYSTEM_NAME
+- Check the Info.plist file is (a minimum) correct
+- Update PROTOCOL_VERSION_MINOR from 2 to 3
+  We broke the API between version 1.8.3 and 1.8.4 by changing the value
+  of MAX_READERNAME. This change should have been made before releasing
+  version 1.8.4 to make mix of versions clearly non working instead of
+  failing with strange errors.
+- hotplug_libudev.c: Fix a memory leak in case of error
+- Fix OpenBSD 5.2 compilation regarding dlopen
+- correctly manage thread safe multi-slot readers
+- Do not use pthread_atfork() any more (fix problem on FreeBSD)
+- fix memory leaks.
+  This was not really a problem unless you embedd pcscd in another
+  process and do init/deinit pcscd without exiting the process (as maybe
+  used on Android or iOS).
+- pcscd.8 manpage: add documentation for --max-thread,
+  --max-card-handle-per-thread, --max-card-handle-per-reader,
+  --force-reader-polling, --error, --critical and --color
+- Some other minor improvements and bug corrections
+
+
+pcsc-lite-1.8.8: Ludovic Rousseau
+16 January 2013
+- /etc/reader.conf: handle FRIENDLYNAME with no " delimiters (serial readers)
+- Info.plist: Correctly handle reader names containing & (USB readers)
+
+
+pcsc-lite-1.8.7: Ludovic Rousseau
+28 November 2012
+- Fix a problem when a reader is unplugged (and the reader is still in use)
+
+
+pcsc-lite-1.8.6: Ludovic Rousseau
+30 August 2012
+- Fix a problem when only serial drivers are used (no hotplug/USB
+  driver)
+- increase log buffer size from 160 to 2048. Some "long" log lines where
+  truncated.
+- Fix redirection of stdin, stdout and stderr to /dev/null when pcscd is
+  started as a daemon (default)
+- Some other minor improvements and bug corrections
+
+
+pcsc-lite-1.8.5: Ludovic Rousseau
+4 August 2012
+- Fix crash when a reader is unplugged while pcscd is in the middle of a
+  PC/SC function
+- SCardBeginTransaction(): fix a bug introduced in version 1.8.4
+  related to sharing
+- Some other minor improvements and bug corrections
+
+
 pcsc-lite-1.8.4: Ludovic Rousseau
 26 June 2012
 - Add [ and ] in the list of accepted characters for a reader name
@@ -49,7 +139,7 @@ pcsc-lite-1.8.0: Ludovic Rousseau
   fork
 - Add define of FEATURE_EXECUTE_PACE from PCSC v2 Part 10 Amendment 1
   2011-06-03
-- Fix some memory leaks repoted by Coverity
+- Fix some memory leaks reported by Coverity
 - Enable silent build by default
 - log_line(): correctly calculate delta time when no color is used
   The update of last_time was only done in case of colorization
@@ -203,7 +293,7 @@ pcsc-lite-1.6.2: Ludovic Rousseau
   driver polling function.
 - Avoid a division by 0. Closes [#312555] "simclist bug in pcsc-lite"
 - if pcscd is stared by libpcsclite then close all file handles except
-  stdin, stdout and stderr so that pcscd does not confiscate ressources
+  stdin, stdout and stderr so that pcscd does not confiscate resources
   allocated by the application
 - in case of auto exit create a new session so that Ctrl-C on the
   application will not also quit pcscd
@@ -244,7 +334,7 @@ pcsc-lite-1.6.1: Ludovic Rousseau
   Thanks to Patrice Angelini for the bug report
 - SCardConnect() & SCardReconnect(): do not reset the cardProtocol in
   SCARD_SHARE_DIRECT case since the card have _not_ been reseted. A new
-  PPS negociation would fail.
+  PPS negotiation would fail.
 - Do not install files in /etc any more. Serial drivers are rare now.
 - Avoids a crash if a client sends a unknown command.
   Thanks to Martin Vogt for the bug report
@@ -303,7 +393,7 @@ pcsc-lite-1.6.0: Ludovic Rousseau
   commands
 - SCardStatus(): returns SCARD_E_SHARING_VIOLATION if the reader is
   already used More conform to Windows
-- PCSC/reader.h: update sruct PIN_PROPERTIES_STRUCTURE to be conform
+- PCSC/reader.h: update struct PIN_PROPERTIES_STRUCTURE to be conform
   with Revision 2.02.06, April 2009 of PCSCv2 part 10 Fields
   wLcdMaxCharacters and wLcdMaxLines have been removed
   . rename FEATURE_MCT_READERDIRECT in FEATURE_MCT_READER_DIRECT to be
@@ -662,7 +752,7 @@ pcsc-lite-1.3.0: Ludovic Rousseau
 3 March 2006
 - new official stable version since 1.2.0 in October 2003. Many thanks
   to all the bug reporters and bug fixers
-- libmusclecard is now in a independenant package
+- libmusclecard is now in a independent package
 - (re)allow compilation on Solaris
 - SCardReleaseContext(): do not check that the thread releasing the
   context is the one that established it. This check is not performed on
@@ -876,7 +966,7 @@ pcsc-lite-1.2.9-beta3: Ludovic Rousseau
 - src/utils/Makefile.am:
   . install bundleTool and installifd in [...]/sbin/ instead of [...]/bin/
 - doc/example/Makefile.am:
-  . do not install pcsc_demo since it is just a sample code for developpers
+  . do not install pcsc_demo since it is just a sample code for developers
     that is not supposed (the code) to do anything useful
 - doc/example/pcsc_demo.c:
   . replace SCARD_PROTOCOL_ANY by SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1 since
@@ -1014,7 +1104,7 @@ pcsc-lite-1.2.0-rc2: Ludovic Rousseau
   link with libmusclecard.
 - src/winscard_clnt.c: add a new function SCardUnload() to free allocated
   resources. It is mandatory only if you use dlopen/dlclose to often
-  load/unload the library.  Otherwi se you will exhaust the ressources
+  load/unload the library.  Otherwi se you will exhaust the resources
   available and get a crash.  Thanks to Guy Moreillon for the patch.
 - src/muscletest.c: code cleaning
 
@@ -1262,7 +1352,7 @@ pcsc-lite-1.0.2beta3: (Ludovic Rousseau <ludovic.rousseau@free.fr>)
    . corrected three %x to %lx for long arguments
 - README
    . add documentation for --enable-confdir and --enable-runpid
-- src/README_INTERNALS.txt: new file containing some documenation for source
+- src/README_INTERNALS.txt: new file containing some documentation for source
   code hackers
 - src/Makefile.am: add EXTRA_DIST = README_INTERNALS.txt
 - src/pcscdaemon.c: the daemon now cleany stops the drivers before exiting
@@ -1299,7 +1389,7 @@ pcsc-lite-1.0.2beta2: (Ludovic Rousseau <ludovic.rousseau@free.fr>)
      inspiration from Shell Hin-Lik Hung, OpenBSD pcsc-lite port
    . add --enable-runpid=FILE to store the pcscd pid
      inspiration from Carlos Prados, Debian package maintainer
-- many C source files includes <pcsclite.h> (or somilar). I changed to
+- many C source files includes <pcsclite.h> (or similar). I changed to
   "pcsclite.h" since the local .h should be more recent and with less
   bugs than the one in /usr/local/include/
 - src/dyn_bsd.c, src/dyn_unix.c: in DYN_LoadLibrary() changed 0 to
@@ -1307,7 +1397,7 @@ pcsc-lite-1.0.2beta2: (Ludovic Rousseau <ludovic.rousseau@free.fr>)
 - src/dyn_hpux.c: removed declared but unused variables
 - src/ifdwrapper.c: initialize IFD_? functions pointer to NULL
 - src/pcscdaemon.c:
-   . removed declartion of errno (already made in errno.h)
+   . removed declaration of errno (already made in errno.h)
    . exit with code value
    . more explicit error message when /tmp/pcsc/ already exist
    . test if VERSION and PCSCLITE_VERSION_NUMBER are the same

@@ -3,7 +3,7 @@
 
 AC_PREREQ([2.69])
 
-AC_INIT([pcsc-lite],[1.8.4])
+AC_INIT([pcsc-lite],[1.8.11])
 AC_CONFIG_SRCDIR(src/pcscdaemon.c)
 AM_INIT_AUTOMAKE(1.8 dist-bzip2 no-dist-gzip)
 AC_CONFIG_HEADERS([config.h])
@@ -66,11 +66,10 @@ AM_PROG_CC_C_O
 AM_PROG_AR
 
 # Special check for pthread support
-ACX_PTHREAD(
-[
+AX_PTHREAD([
  AC_DEFINE(HAVE_PTHREAD, 1,
   [Define if you have POSIX threads libraries and header files.])
-], [
+],[
  AC_MSG_ERROR([POSIX thread support required])
 ])
 
@@ -129,8 +128,9 @@ AC_COMPILE_IFELSE([AC_LANG_SOURCE([char foo;])],
 CFLAGS="$saved_CFLAGS"
 AC_SUBST(SYMBOL_VISIBILITY)
 
-AC_SUBST(LIBDL)
-AC_CHECK_LIB(dl, dlopen, [LIBDL="$LIBDL -ldl" ac_cv_func_dlopen_ldl=yes], ac_cv_func_dlopen_ldl=no)
+AC_SEARCH_LIBS([dlopen], [dl dld], [], [
+  AC_MSG_ERROR([unable to find the dlopen() function])
+])
 
 # Use 'uname' output as an architecture define
 PCSC_ARCH=`uname | sed -e s,/,_,`
@@ -280,6 +280,29 @@ if test x$use_libusb = xyes; then
   PCSCLITE_FEATURES="${PCSCLITE_FEATURES} libusb"
 fi
 
+# --enable-polkit
+POLKIT_MINIMUM=0.111
+AC_ARG_ENABLE(polkit,
+	AS_HELP_STRING([--enable-polkit],
+		[Build with polkit support]),
+		use_polkit=$withval, use_polkit=no)
+if test "$use_polkit" != "no"; then
+	PKG_CHECK_MODULES(POLKIT, [polkit-gobject-1 >= $POLKIT_MINIMUM], [use_polkit=yes], [use_polkit=no])
+	if test "$use_polkit" != "no";then
+		AC_DEFINE([HAVE_POLKIT], 1, [Build polkit access control support])
+		polkit_policy_dir=$($PKG_CONFIG polkit-gobject-1 --variable=policydir)
+		AC_SUBST(POLICY_DIR, [$polkit_policy_dir])
+	else
+	        use_polkit=no
+	        AC_MSG_ERROR([[
+*** 
+*** polkit >= $POLKIT_MINIMUM was not found. Access control will be disabled.
+*** You may get it from http://www.freedesktop.org/software/polkit/
+*** ]])
+	fi
+fi
+AM_CONDITIONAL(ENABLE_POLKIT, test "$use_polkit" != "no")
+
 # --with-systemdsystemunitdir=DIR
 AC_ARG_WITH([systemdsystemunitdir],
   AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
@@ -353,6 +376,7 @@ AS_HELP_STRING([--enable-confdir=DIR],[directory containing reader configuration
 # Setup dist stuff
 AC_SUBST(usbdropdir)
 AC_SUBST(ipcdir)
+AC_SUBST(serialconfdir)
 AC_SUBST(host_to_ccid_16)
 AC_SUBST(host_to_ccid_32)
 AS_AC_EXPAND(confdir_exp,$confdir)
@@ -388,6 +412,8 @@ PTHREAD_LIBS:        ${PTHREAD_LIBS}
 PCSC_ARCH:           ${PCSC_ARCH}
 
 pcscd binary            ${PCSCD_BINARY}
+polkit support:         ${use_polkit}
+polkit policy dir:      ${polkit_policy_dir}
 libudev support:        ${use_libudev}
 libusb support:         ${use_libusb}
 USB drop directory:     ${usbdropdir}
@@ -396,6 +422,7 @@ ipcdir:                 ${ipcdir}
 use serial:             ${use_serial}
 use usb:                ${use_usb}
 systemd unit directory: ${with_systemdsystemunitdir}
+serial config dir.:     ${confdir_exp}
 
 PCSCLITE_FEATURES:      ${PCSCLITE_FEATURES}
 
@@ -404,7 +431,6 @@ EOF
 # Write Makefiles
 AC_CONFIG_FILES([
 Makefile
-m4/Makefile
 doc/Makefile
 doc/doxygen.conf
 doc/pcscd.8

@@ -1,8 +1,8 @@
 /*
- * MUSCLE SmartCard Development ( http://www.linuxnet.com )
+ * MUSCLE SmartCard Development ( http://pcsclite.alioth.debian.org/pcsclite.html )
  *
  * Copyright (C) 2001-2004
- *  David Corcoran <corcoran@linuxnet.com>
+ *  David Corcoran <corcoran@musclecard.com>
  * Copyright (C) 2003-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  * Copyright (C) 2003
@@ -10,7 +10,33 @@
  * Copyright (C) 2003-2004
  *  Damien Sauveron <damien.sauveron@labri.fr>
  *
- * $Id: hotplug_libusb.c 5938 2011-09-03 21:43:53Z rousseau $
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+Changes to this license can be made only by the copyright author with
+explicit written consent.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * $Id: hotplug_libusb.c 6851 2014-02-14 15:43:32Z rousseau $
  */
 
 /**
@@ -46,7 +72,6 @@
 #include "utils.h"
 
 #undef DEBUG_HOTPLUG
-#define ADD_SERIAL_NUMBER
 
 /* format is "%d:%d:%d", bus_number, device_address, interface */
 #define BUS_DEVICE_STRSIZE	10+1+10+1+10+1
@@ -57,6 +82,8 @@
 
 #define FALSE			0
 #define TRUE			1
+
+extern char Add_Serial_In_Name;
 
 /* we use the default libusb context */
 #define ctx NULL
@@ -544,12 +571,9 @@ static LONG HPAddHotPluggable(struct libusb_device *dev,
 		sizeof(readerTracker[i].bus_device));
 	readerTracker[i].bus_device[sizeof(readerTracker[i].bus_device) - 1] = '\0';
 
-#ifdef ADD_SERIAL_NUMBER
-	if (desc.iSerialNumber)
+	if (Add_Serial_In_Name && desc.iSerialNumber)
 	{
 		libusb_device_handle *device;
-		unsigned char serialNumber[MAX_READERNAME];
-		char fullname[MAX_READERNAME];
 		int ret;
 
 		ret = libusb_open(dev, &device);
@@ -559,6 +583,8 @@ static LONG HPAddHotPluggable(struct libusb_device *dev,
 		}
 		else
 		{
+			unsigned char serialNumber[MAX_READERNAME];
+
 			ret = libusb_get_string_descriptor_ascii(device, desc.iSerialNumber,
 				serialNumber, MAX_READERNAME);
 			libusb_close(device);
@@ -571,6 +597,8 @@ static LONG HPAddHotPluggable(struct libusb_device *dev,
 			}
 			else
 			{
+				char fullname[MAX_READERNAME];
+
 				snprintf(fullname, sizeof(fullname), "%s (%s)",
 					driver->readerName, serialNumber);
 				readerTracker[i].fullName = strdup(fullname);
@@ -578,7 +606,6 @@ static LONG HPAddHotPluggable(struct libusb_device *dev,
 		}
 	}
 	else
-#endif
 		readerTracker[i].fullName = strdup(driver->readerName);
 
 	if (RFAddReader(readerTracker[i].fullName, PCSCLITE_HP_BASE_PORT + i,

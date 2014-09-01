@@ -1,12 +1,38 @@
 /*
- * MUSCLE SmartCard Development ( http://www.linuxnet.com )
+ * MUSCLE SmartCard Development ( http://pcsclite.alioth.debian.org/pcsclite.html )
  *
  * Copyright (C) 1999
- *  David Corcoran <corcoran@linuxnet.com>
+ *  David Corcoran <corcoran@musclecard.com>
  * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: readerfactory.h 6321 2012-06-05 09:07:46Z rousseau $
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+Changes to this license can be made only by the copyright author with
+explicit written consent.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * $Id: readerfactory.h 6851 2014-02-14 15:43:32Z rousseau $
  */
 
 /**
@@ -102,27 +128,34 @@
 		int version;			/**< IFD Handler version number */
 		int port;				/**< Port ID */
 		int slot;				/**< Current Reader Slot */
-		SCARDHANDLE hLockId;	/**< Lock Id */
+		volatile SCARDHANDLE hLockId;	/**< Lock Id */
 		int LockCount;			/**< number of recursive locks */
 		int32_t contexts;		/**< Number of open contexts */
 		int * pFeeds;			/**< Number of shared client to lib */
 		int * pMutex;			/**< Number of client to mutex */
 		int powerState;			/**< auto power off state */
 		pthread_mutex_t powerState_lock;	/**< powerState mutex */
+		int reference;			/**< number of users of the structure */
+		pthread_mutex_t reference_lock;	 /**< reference mutex */
 
 		struct pubReaderStatesList *readerState; /**< link to the reader state */
-		/* we can't use READER_CONTEXT * here since eventhandler.h can't be
+		/* we can't use READER_STATE * here since eventhandler.h can't be
 		 * included because of circular dependencies */
 	};
 
 	typedef struct ReaderContext READER_CONTEXT;
+
+	LONG _RefReader(READER_CONTEXT * sReader);
+	LONG _UnrefReader(READER_CONTEXT * sReader);
+
+#define REF_READER(reader) { LONG rv; Log2(PCSC_LOG_DEBUG, "RefReader() count was: %d", reader->reference); rv = _RefReader(reader); if (rv != SCARD_S_SUCCESS) return rv; }
+#define UNREF_READER(reader) {Log2(PCSC_LOG_DEBUG, "UnrefReader() count was: %d", reader->reference); _UnrefReader(reader);}
 
 	LONG RFAllocateReaderSpace(unsigned int);
 	LONG RFAddReader(const char *, int, const char *, const char *);
 	LONG RFRemoveReader(const char *, int);
 	LONG RFSetReaderName(READER_CONTEXT *, const char *, const char *, int);
 	LONG RFReaderInfo(const char *, /*@out@*/ struct ReaderContext **);
-	LONG RFReaderInfoNamePort(int, const char *, /*@out@*/ struct ReaderContext **);
 	LONG RFReaderInfoById(SCARDHANDLE, /*@out@*/ struct ReaderContext **);
 	LONG RFCheckSharing(SCARDHANDLE, READER_CONTEXT *);
 	LONG RFLockSharing(SCARDHANDLE, READER_CONTEXT *);
