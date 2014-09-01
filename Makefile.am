@@ -1,4 +1,4 @@
-SUBDIRS = m4 src etc doc
+SUBDIRS = src etc doc
 
 fix-rights:
 	$(MAKE) -C src $@
@@ -8,7 +8,13 @@ ACLOCAL_AMFLAGS = -I m4
 DISTCHECK_CONFIGURE_FLAGS = \
 	--with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir)
 
-EXTRA_DIST = DRIVERS SECURITY bootstrap HELP ChangeLog.svn
+EXTRA_DIST = \
+	bootstrap \
+	ChangeLog.svn \
+	DRIVERS SECURITY \
+	HELP \
+	m4/ax_pthread.m4 \
+	m4/as-ac-expand.m4
 
 DISTCLEANFILES = ChangeLog.svn
 

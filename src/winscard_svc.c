@@ -1,8 +1,8 @@
 /*
- * MUSCLE SmartCard Development ( http://www.linuxnet.com )
+ * MUSCLE SmartCard Development ( http://pcsclite.alioth.debian.org/pcsclite.html )
  *
  * Copyright (C) 2001-2004
- *  David Corcoran <corcoran@linuxnet.com>
+ *  David Corcoran <corcoran@musclecard.com>
  * Copyright (C) 2003-2004
  *  Damien Sauveron <damien.sauveron@labri.fr>
  * Copyright (C) 2002-2011
@@ -10,7 +10,33 @@
  * Copyright (C) 2009
  *  Jean-Luc Giraud <jlgiraud@googlemail.com>
  *
- * $Id: winscard_svc.c 5864 2011-07-09 11:37:48Z rousseau $
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+Changes to this license can be made only by the copyright author with
+explicit written consent.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * $Id: winscard_svc.c 6851 2014-02-14 15:43:32Z rousseau $
  */
 
 /**
@@ -42,6 +68,7 @@
 #include "readerfactory.h"
 #include "eventhandler.h"
 #include "simclist.h"
+#include "auth.h"
 
 /**
  * @brief Represents an Application Context on the Server side.
@@ -129,6 +156,8 @@ void ContextsDeinitialize(void)
 	listSize = list_size(&contextsList);
 	Log2(PCSC_LOG_DEBUG, "remaining threads: %d", listSize);
 	/* This is currently a no-op. It should terminate the threads properly. */
+
+	list_destroy(&contextsList);
 }
 
 /**
@@ -147,15 +176,15 @@ LONG CreateContextThread(uint32_t *pdwClientID)
 	int lrv;
 	int listSize;
 	SCONTEXT * newContext = NULL;
+	LONG retval = SCARD_E_NO_MEMORY;
 
 	(void)pthread_mutex_lock(&contextsList_lock);
-	listSize = list_size(&contextsList);
-	(void)pthread_mutex_unlock(&contextsList_lock);
 
+	listSize = list_size(&contextsList);
 	if (listSize >= contextMaxThreadCounter)
 	{
 		Log2(PCSC_LOG_CRITICAL, "Too many context running: %d", listSize);
-		goto error;
+		goto out;
 	}
 
 	/* Create the context for this thread. */
@@ -163,78 +192,80 @@ LONG CreateContextThread(uint32_t *pdwClientID)
 	if (NULL == newContext)
 	{
 		Log1(PCSC_LOG_CRITICAL, "Could not allocate new context");
-		goto error;
+		goto out;
 	}
 	memset(newContext, 0, sizeof(*newContext));
 
 	newContext->dwClientID = *pdwClientID;
 
 	/* Initialise the list of card contexts */
-	lrv = list_init(&(newContext->cardsList));
+	lrv = list_init(&newContext->cardsList);
 	if (lrv < 0)
 	{
 		Log2(PCSC_LOG_CRITICAL, "list_init failed with return value: %d", lrv);
-		goto error;
+		goto out;
 	}
 
 	/* request to store copies, and provide the metric function */
-	list_attributes_copy(&(newContext->cardsList), list_meter_int32_t, 1);
+	list_attributes_copy(&newContext->cardsList, list_meter_int32_t, 1);
 
 	/* Adding a comparator
 	 * The stored type is SCARDHANDLE (long) but has only 32 bits
 	 * usefull even on a 64-bit CPU since the API between pcscd and
 	 * libpcscliter uses "int32_t hCard;"
 	 */
-	lrv = list_attributes_comparator(&(newContext->cardsList),
+	lrv = list_attributes_comparator(&newContext->cardsList,
 		list_comparator_int32_t);
 	if (lrv != 0)
 	{
 		Log2(PCSC_LOG_CRITICAL,
 			"list_attributes_comparator failed with return value: %d", lrv);
-		list_destroy(&(newContext->cardsList));
-		goto error;
+		list_destroy(&newContext->cardsList);
+		goto out;
 	}
 
 	(void)pthread_mutex_init(&newContext->cardsList_lock, NULL);
 
-	(void)pthread_mutex_lock(&contextsList_lock);
 	lrv = list_append(&contextsList, newContext);
-	(void)pthread_mutex_unlock(&contextsList_lock);
 	if (lrv < 0)
 	{
 		Log2(PCSC_LOG_CRITICAL, "list_append failed with return value: %d",
 			lrv);
-		list_destroy(&(newContext->cardsList));
-		goto error;
+		list_destroy(&newContext->cardsList);
+		goto out;
 	}
 
-	rv = ThreadCreate(&(newContext->pthThread), THREAD_ATTR_DETACHED,
+	rv = ThreadCreate(&newContext->pthThread, THREAD_ATTR_DETACHED,
 		(PCSCLITE_THREAD_FUNCTION( )) ContextThread, (LPVOID) newContext);
 	if (rv)
 	{
 		int lrv2;
 
 		Log2(PCSC_LOG_CRITICAL, "ThreadCreate failed: %s", strerror(rv));
-		(void)pthread_mutex_lock(&contextsList_lock);
 		lrv2 = list_delete(&contextsList, newContext);
-		(void)pthread_mutex_unlock(&contextsList_lock);
 		if (lrv2 < 0)
 			Log2(PCSC_LOG_CRITICAL, "list_delete failed with error %d", lrv2);
-		list_destroy(&(newContext->cardsList));
-		goto error;
+		list_destroy(&newContext->cardsList);
+		goto out;
 	}
 
 	/* disable any suicide alarm */
 	if (AutoExit)
 		alarm(0);
 
-	return SCARD_S_SUCCESS;
+	retval = SCARD_S_SUCCESS;
 
-error:
-	if (newContext)
-		free(newContext);
-	(void)close(*pdwClientID);
-	return SCARD_E_NO_MEMORY;
+out:
+	(void)pthread_mutex_unlock(&contextsList_lock);
+
+	if (retval != SCARD_S_SUCCESS)
+	{
+		if (newContext)
+			free(newContext);
+		(void)close(*pdwClientID);
+	}
+
+	return retval;
 }
 
 /*
@@ -292,6 +323,16 @@ static void ContextThread(LPVOID newContext)
 {
 	SCONTEXT * threadContext = (SCONTEXT *) newContext;
 	int32_t filedes = threadContext->dwClientID;
+
+	if (IsClientAuthorized(filedes, "access_pcsc", NULL) == 0)
+	{
+		Log1(PCSC_LOG_CRITICAL, "Rejected unauthorized PC/SC client");
+		goto exit;
+	}
+	else
+	{
+		Log1(PCSC_LOG_DEBUG, "Authorized PC/SC client");
+	}
 
 	Log3(PCSC_LOG_DEBUG, "Thread is started: dwClientID=%d, threadContext @%p",
 		threadContext->dwClientID, threadContext);
@@ -432,8 +473,19 @@ static void ContextThread(LPVOID newContext)
 
 				READ_BODY(coStr)
 
+				coStr.szReader[sizeof(coStr.szReader)-1] = 0;
 				hCard = coStr.hCard;
 				dwActiveProtocol = coStr.dwActiveProtocol;
+
+				if (IsClientAuthorized(filedes, "access_card", coStr.szReader) == 0)
+				{
+					Log2(PCSC_LOG_CRITICAL, "Rejected unauthorized client for '%s'", coStr.szReader);
+					goto exit;
+				}
+				else
+				{
+					Log2(PCSC_LOG_DEBUG, "Authorized client for '%s'", coStr.szReader);
+				}
 
 				coStr.rv = SCardConnect(coStr.hContext, coStr.szReader,
 					coStr.dwShareMode, coStr.dwPreferredProtocols,
@@ -527,7 +579,7 @@ static void ContextThread(LPVOID newContext)
 				/* find the client */
 				(void)pthread_mutex_lock(&contextsList_lock);
 				psTargetContext = (SCONTEXT *) list_seek(&contextsList,
-					&(caStr.hContext));
+					&caStr.hContext);
 				(void)pthread_mutex_unlock(&contextsList_lock);
 				if (psTargetContext != NULL)
 				{
@@ -751,7 +803,7 @@ static LONG MSGRemoveContext(SCARDCONTEXT hContext, SCONTEXT * threadContext)
 		return SCARD_E_INVALID_VALUE;
 
 	(void)pthread_mutex_lock(&threadContext->cardsList_lock);
-	while (list_size(&(threadContext->cardsList)) != 0)
+	while (list_size(&threadContext->cardsList) != 0)
 	{
 		READER_CONTEXT * rContext = NULL;
 		SCARDHANDLE hCard, hLockId;
@@ -760,7 +812,7 @@ static LONG MSGRemoveContext(SCARDCONTEXT hContext, SCONTEXT * threadContext)
 		/*
 		 * Disconnect each of these just in case
 		 */
-		ptr = list_get_at(&(threadContext->cardsList), 0);
+		ptr = list_get_at(&threadContext->cardsList, 0);
 		if (NULL == ptr)
 		{
 			Log1(PCSC_LOG_CRITICAL, "list_get_at failed");
@@ -805,13 +857,15 @@ static LONG MSGRemoveContext(SCARDCONTEXT hContext, SCONTEXT * threadContext)
 			(void)SCardDisconnect(hCard, SCARD_RESET_CARD);
 
 		/* Remove entry from the list */
-		lrv = list_delete_at(&(threadContext->cardsList), 0);
+		lrv = list_delete_at(&threadContext->cardsList, 0);
 		if (lrv < 0)
 			Log2(PCSC_LOG_CRITICAL,
 				"list_delete_at failed with return value: %d", lrv);
+
+		UNREF_READER(rContext)
 	}
 	(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
-	list_destroy(&(threadContext->cardsList));
+	list_destroy(&threadContext->cardsList);
 
 	/* We only mark the context as no longer in use.
 	 * The memory is freed in MSGCleanupCLient() */
@@ -823,36 +877,45 @@ static LONG MSGRemoveContext(SCARDCONTEXT hContext, SCONTEXT * threadContext)
 static LONG MSGAddHandle(SCARDCONTEXT hContext, SCARDHANDLE hCard,
 	SCONTEXT * threadContext)
 {
+	LONG retval = SCARD_E_INVALID_VALUE;
+
 	if (threadContext->hContext == hContext)
 	{
 		/*
 		 * Find an empty spot to put the hCard value
 		 */
-		int listLength, lrv;
+		int listLength;
 
-		listLength = list_size(&(threadContext->cardsList));
+		(void)pthread_mutex_lock(&threadContext->cardsList_lock);
+
+		listLength = list_size(&threadContext->cardsList);
 		if (listLength >= contextMaxCardHandles)
 		{
 			Log4(PCSC_LOG_DEBUG,
 				"Too many card handles for thread context @%p: %d (max is %d)"
 				"Restart pcscd with --max-card-handle-per-thread value",
 				threadContext, listLength, contextMaxCardHandles);
-			return SCARD_E_NO_MEMORY;
+			retval = SCARD_E_NO_MEMORY;
+		}
+		else
+		{
+			int lrv;
+
+			lrv = list_append(&threadContext->cardsList, &hCard);
+			if (lrv < 0)
+			{
+				Log2(PCSC_LOG_CRITICAL,
+					"list_append failed with return value: %d", lrv);
+				retval = SCARD_E_NO_MEMORY;
+			}
+			else
+				retval = SCARD_S_SUCCESS;
 		}
 
-		(void)pthread_mutex_lock(&threadContext->cardsList_lock);
-		lrv = list_append(&(threadContext->cardsList), &hCard);
 		(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
-		if (lrv < 0)
-		{
-			Log2(PCSC_LOG_CRITICAL, "list_append failed with return value: %d",
-				lrv);
-			return SCARD_E_NO_MEMORY;
-		}
-		return SCARD_S_SUCCESS;
 	}
 
-	return SCARD_E_INVALID_VALUE;
+	return retval;
 }
 
 static LONG MSGRemoveHandle(SCARDHANDLE hCard, SCONTEXT * threadContext)
@@ -860,7 +923,7 @@ static LONG MSGRemoveHandle(SCARDHANDLE hCard, SCONTEXT * threadContext)
 	int lrv;
 
 	(void)pthread_mutex_lock(&threadContext->cardsList_lock);
-	lrv = list_delete(&(threadContext->cardsList), &hCard);
+	lrv = list_delete(&threadContext->cardsList, &hCard);
 	(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
 	if (lrv < 0)
 	{
@@ -886,7 +949,7 @@ static LONG MSGCheckHandleAssociation(SCARDHANDLE hCard,
 	}
 
 	(void)pthread_mutex_lock(&threadContext->cardsList_lock);
-	list_index = list_locate(&(threadContext->cardsList), &hCard);
+	list_index = list_locate(&threadContext->cardsList, &hCard);
 	(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
 	if (list_index >= 0)
 		return 0;

@@ -1,8 +1,8 @@
 /*
- * MUSCLE SmartCard Development ( http://www.linuxnet.com )
+ * MUSCLE SmartCard Development ( http://pcsclite.alioth.debian.org/pcsclite.html )
  *
  * Copyright (C) 1999-2004
- *  David Corcoran <corcoran@linuxnet.com>
+ *  David Corcoran <corcoran@musclecard.com>
  * Copyright (C) 2003-2004
  *  Damien Sauveron <damien.sauveron@labri.fr>
  * Copyright (C) 2005
@@ -12,12 +12,38 @@
  * Copyright (C) 2009
  *  Jean-Luc Giraud <jlgiraud@googlemail.com>
  *
- * $Id: winscard_clnt.c 6362 2012-06-26 14:22:15Z rousseau $
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+Changes to this license can be made only by the copyright author with
+explicit written consent.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * $Id: winscard_clnt.c 6851 2014-02-14 15:43:32Z rousseau $
  */
 
 /**
  * @file
- * @defgroup API
+ * @defgroup API API
  * @brief Handles smart card reader communications and
  * forwarding requests over message queues.
  *
@@ -289,7 +315,7 @@ struct _psContextMap
 {
 	DWORD dwClientID;				/**< Client Connection ID */
 	SCARDCONTEXT hContext;			/**< Application Context ID */
-	pthread_mutex_t * mMutex;		/**< Mutex for this context */
+	pthread_mutex_t mMutex;			/**< Mutex for this context */
 	list_t channelMapList;
 	char cancellable;				/**< We are in a cancellable call */
 };
@@ -353,7 +379,6 @@ static LONG SCardGetContextAndChannelFromHandleTH(SCARDHANDLE,
 	/*@out@*/ SCONTEXTMAP * *, /*@out@*/ CHANNEL_MAP * *);
 static LONG SCardRemoveHandle(SCARDHANDLE);
 
-static void SCardInvalidateHandles(void);
 static LONG SCardGetSetAttrib(SCARDHANDLE hCard, int command, DWORD dwAttrId,
 	LPBYTE pbAttr, LPDWORD pcbAttrLen);
 
@@ -423,19 +448,9 @@ LONG SCardEstablishContext(DWORD dwScope, LPCVOID pvReserved1,
 	LPCVOID pvReserved2, LPSCARDCONTEXT phContext)
 {
 	LONG rv;
-	static int first_time = TRUE;
 
 	API_TRACE_IN("%ld, %p, %p", dwScope, pvReserved1, pvReserved2)
 	PROFILE_START
-
-	/* Some setup for the first execution */
-	if (first_time)
-	{
-		first_time = FALSE;
-
-		/* Invalidate all the handles in the son after a fork */
-		pthread_atfork(NULL, NULL, SCardInvalidateHandles);
-	}
 
 	/* Check if the server is running */
 	rv = SCardCheckDaemonAvailability();
@@ -656,14 +671,14 @@ LONG SCardReleaseContext(SCARDCONTEXT hContext)
 		goto error;
 	}
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the context is still opened */
 	currentContextMap = SCardGetContext(hContext);
 	if (NULL == currentContextMap)
-		/* the context is now invalid
+		/* the hContext context is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked */
 	{
 		rv = SCARD_E_INVALID_HANDLE;
 		goto error;
@@ -690,7 +705,7 @@ LONG SCardReleaseContext(SCARDCONTEXT hContext)
 
 	rv = scReleaseStruct.rv;
 end:
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	/*
 	 * Remove the local context from the stack
@@ -797,14 +812,14 @@ LONG SCardConnect(SCARDCONTEXT hContext, LPCSTR szReader,
 	if (NULL == currentContextMap)
 		return SCARD_E_INVALID_HANDLE;
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the context is still opened */
 	currentContextMap = SCardGetContext(hContext);
 	if (NULL == currentContextMap)
-		/* the context is now invalid
+		/* the hContext context is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked */
 		return SCARD_E_INVALID_HANDLE;
 
 	strlcpy(scConnectStruct.szReader, szReader, sizeof scConnectStruct.szReader);
@@ -845,7 +860,7 @@ LONG SCardConnect(SCARDCONTEXT hContext, LPCSTR szReader,
 		rv = scConnectStruct.rv;
 
 end:
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	PROFILE_END(rv)
 	API_TRACE_OUT("%d", *pdwActiveProtocol)
@@ -951,16 +966,22 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 	/* Retry loop for blocking behaviour */
 retry:
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the handle is still valid */
 	rv = SCardGetContextAndChannelFromHandle(hCard, &currentContextMap,
 		&pChannelMap);
 	if (rv == -1)
-		/* the handle is now invalid
+	{
+		/* the hCard handle is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked (and is now invalid)
+		 * -> another thread may have called SCardDisconnect
+		 *    so the mMutex is STILL locked
+		 * since we don't know just unlock the mutex */
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		return SCARD_E_INVALID_HANDLE;
+	}
 
 	scReconnectStruct.hCard = hCard;
 	scReconnectStruct.dwShareMode = dwShareMode;
@@ -988,7 +1009,7 @@ retry:
 
 	if (sharing_shall_block && (SCARD_E_SHARING_VIOLATION == rv))
 	{
-		(void)pthread_mutex_unlock(currentContextMap->mMutex);
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		(void)SYS_USleep(PCSCLITE_LOCK_POLL_RATE);
 		goto retry;
 	}
@@ -996,7 +1017,7 @@ retry:
 	*pdwActiveProtocol = scReconnectStruct.dwActiveProtocol;
 
 end:
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	PROFILE_END(rv)
 
@@ -1055,16 +1076,20 @@ LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
 		goto error;
 	}
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the handle is still valid */
 	rv = SCardGetContextAndChannelFromHandle(hCard, &currentContextMap,
 		&pChannelMap);
 	if (rv == -1)
-		/* the handle is now invalid
+		/* the hCard handle is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked (and is now invalid)
+		 * -> another thread may have called SCardDisconnect
+		 *    so the mMutex is STILL locked
+		 * since we don't know just unlock the mutex */
 	{
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		rv = SCARD_E_INVALID_HANDLE;
 		goto error;
 	}
@@ -1093,7 +1118,7 @@ LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
 	rv = scDisconnectStruct.rv;
 
 end:
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 error:
 	PROFILE_END(rv)
@@ -1162,16 +1187,22 @@ LONG SCardBeginTransaction(SCARDHANDLE hCard)
 
 	for(;;)
 	{
-		(void)pthread_mutex_lock(currentContextMap->mMutex);
+		(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 		/* check the handle is still valid */
 		rv = SCardGetContextAndChannelFromHandle(hCard, &currentContextMap,
 			&pChannelMap);
 		if (rv == -1)
-			/* the handle is now invalid
+		{
+			/* the hCard handle is now invalid
 			 * -> another thread may have called SCardReleaseContext
-			 * -> so the mMutex has been unlocked */
+			 *    so the mMutex has been unlocked (and is now invalid)
+			 * -> another thread may have called SCardDisconnect
+			 *    so the mMutex is STILL locked
+			 * since we don't know just unlock the mutex */
+			(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 			return SCARD_E_INVALID_HANDLE;
+		}
 
 		scBeginStruct.hCard = hCard;
 		scBeginStruct.rv = SCARD_S_SUCCESS;
@@ -1197,12 +1228,11 @@ LONG SCardBeginTransaction(SCARDHANDLE hCard)
 		if (SCARD_E_SHARING_VIOLATION != rv)
 			break;
 
-		(void)pthread_mutex_unlock(currentContextMap->mMutex);
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		(void)SYS_USleep(PCSCLITE_LOCK_POLL_RATE);
 	}
-	while (SCARD_E_SHARING_VIOLATION == rv);
 
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	PROFILE_END(rv)
 
@@ -1267,16 +1297,22 @@ LONG SCardEndTransaction(SCARDHANDLE hCard, DWORD dwDisposition)
 	if (rv == -1)
 		return SCARD_E_INVALID_HANDLE;
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the handle is still valid */
 	rv = SCardGetContextAndChannelFromHandle(hCard, &currentContextMap,
 		&pChannelMap);
 	if (rv == -1)
-		/* the handle is now invalid
+	{
+		/* the hCard handle is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked (and is now invalid)
+		 * -> another thread may have called SCardDisconnect
+		 *    so the mMutex is STILL locked
+		 * since we don't know just unlock the mutex */
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		return SCARD_E_INVALID_HANDLE;
+	}
 
 	scEndStruct.hCard = hCard;
 	scEndStruct.dwDisposition = dwDisposition;
@@ -1306,7 +1342,7 @@ LONG SCardEndTransaction(SCARDHANDLE hCard, DWORD dwDisposition)
 	rv = scEndStruct.rv;
 
 end:
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	PROFILE_END(rv)
 
@@ -1457,16 +1493,22 @@ LONG SCardStatus(SCARDHANDLE hCard, LPSTR mszReaderName,
 	/* Retry loop for blocking behaviour */
 retry:
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the handle is still valid */
 	rv = SCardGetContextAndChannelFromHandle(hCard, &currentContextMap,
 		&pChannelMap);
 	if (rv == -1)
-		/* the handle is now invalid
+	{
+		/* the hCard handle is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked (and is now invalid)
+		 * -> another thread may have called SCardDisconnect
+		 *    so the mMutex is STILL locked
+		 * since we don't know just unlock the mutex */
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		return SCARD_E_INVALID_HANDLE;
+	}
 
 	/* synchronize reader states with daemon */
 	rv = getReaderStates(currentContextMap);
@@ -1510,7 +1552,7 @@ retry:
 
 	if (sharing_shall_block && (SCARD_E_SHARING_VIOLATION == rv))
 	{
-		(void)pthread_mutex_unlock(currentContextMap->mMutex);
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		(void)SYS_USleep(PCSCLITE_LOCK_POLL_RATE);
 		goto retry;
 	}
@@ -1539,15 +1581,15 @@ retry:
 	if (SCARD_AUTOALLOCATE == dwReaderLen)
 	{
 		dwReaderLen = *pcchReaderLen;
+		if (NULL == mszReaderName)
+		{
+			rv = SCARD_E_INVALID_PARAMETER;
+			goto end;
+		}
 		bufReader = malloc(dwReaderLen);
 		if (NULL == bufReader)
 		{
 			rv = SCARD_E_NO_MEMORY;
-			goto end;
-		}
-		if (NULL == mszReaderName)
-		{
-			rv = SCARD_E_INVALID_PARAMETER;
 			goto end;
 		}
 		*(char **)mszReaderName = bufReader;
@@ -1567,15 +1609,15 @@ retry:
 	if (SCARD_AUTOALLOCATE == dwAtrLen)
 	{
 		dwAtrLen = *pcbAtrLen;
+		if (NULL == pbAtr)
+		{
+			rv = SCARD_E_INVALID_PARAMETER;
+			goto end;
+		}
 		bufAtr = malloc(dwAtrLen);
 		if (NULL == bufAtr)
 		{
 			rv = SCARD_E_NO_MEMORY;
-			goto end;
-		}
-		if (NULL == pbAtr)
-		{
-			rv = SCARD_E_INVALID_PARAMETER;
 			goto end;
 		}
 		*(LPBYTE *)pbAtr = bufAtr;
@@ -1592,7 +1634,7 @@ retry:
 	}
 
 end:
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	PROFILE_END(rv)
 
@@ -1760,14 +1802,14 @@ LONG SCardGetStatusChange(SCARDCONTEXT hContext, DWORD dwTimeout,
 		goto error;
 	}
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the context is still opened */
 	currentContextMap = SCardGetContext(hContext);
 	if (NULL == currentContextMap)
-		/* the context is now invalid
+		/* the hContext context is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked */
 	{
 		rv = SCARD_E_INVALID_HANDLE;
 		goto error;
@@ -2185,7 +2227,7 @@ LONG SCardGetStatusChange(SCARDCONTEXT hContext, DWORD dwTimeout,
 end:
 	Log1(PCSC_LOG_DEBUG, "Event Loop End");
 
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 error:
 	PROFILE_END(rv)
@@ -2211,7 +2253,7 @@ error:
  * @ingroup API
  * @param[in] hCard Connection made from SCardConnect().
  * @param[in] dwControlCode Control code for the operation.\n
- * <a href="http://pcsclite.alioth.debian.org/pcsc-lite/node28.html">
+ * <a href="http://anonscm.debian.org/viewvc/pcsclite/trunk/Drivers/ccid/SCARDCONTOL.txt?view=markup">
  * Click here</a> for a list of supported commands by some drivers.
  * @param[in] pbSendBuffer Command to send to the reader.
  * @param[in] cbSendLength Length of the command.
@@ -2276,16 +2318,22 @@ LONG SCardControl(SCARDHANDLE hCard, DWORD dwControlCode, LPCVOID pbSendBuffer,
 		return SCARD_E_INVALID_HANDLE;
 	}
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the handle is still valid */
 	rv = SCardGetContextAndChannelFromHandle(hCard, &currentContextMap,
 		&pChannelMap);
 	if (rv == -1)
-		/* the handle is now invalid
+	{
+		/* the hCard handle is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked (and is now invalid)
+		 * -> another thread may have called SCardDisconnect
+		 *    so the mMutex is STILL locked
+		 * since we don't know just unlock the mutex */
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		return SCARD_E_INVALID_HANDLE;
+	}
 
 	if ((cbSendLength > MAX_BUFFER_SIZE_EXTENDED)
 		|| (cbRecvLength > MAX_BUFFER_SIZE_EXTENDED))
@@ -2340,7 +2388,7 @@ LONG SCardControl(SCARDHANDLE hCard, DWORD dwControlCode, LPCVOID pbSendBuffer,
 	rv = scControlStruct.rv;
 
 end:
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	PROFILE_END(rv)
 
@@ -2568,16 +2616,22 @@ static LONG SCardGetSetAttrib(SCARDHANDLE hCard, int command, DWORD dwAttrId,
 	if (rv == -1)
 		return SCARD_E_INVALID_HANDLE;
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the handle is still valid */
 	rv = SCardGetContextAndChannelFromHandle(hCard, &currentContextMap,
 		&pChannelMap);
 	if (rv == -1)
-		/* the handle is now invalid
+	{
+		/* the hCard handle is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked (and is now invalid)
+		 * -> another thread may have called SCardDisconnect
+		 *    so the mMutex is STILL locked
+		 * since we don't know just unlock the mutex */
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		return SCARD_E_INVALID_HANDLE;
+	}
 
 	if (*pcbAttrLen > MAX_BUFFER_SIZE)
 	{
@@ -2629,7 +2683,7 @@ static LONG SCardGetSetAttrib(SCARDHANDLE hCard, int command, DWORD dwAttrId,
 	rv = scGetSetStruct.rv;
 
 end:
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	return rv;
 }
@@ -2723,16 +2777,22 @@ LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci,
 	/* Retry loop for blocking behaviour */
 retry:
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the handle is still valid */
 	rv = SCardGetContextAndChannelFromHandle(hCard, &currentContextMap,
 		&pChannelMap);
 	if (rv == -1)
-		/* the handle is now invalid
+	{
+		/* the hCard handle is now invalid
 		 * -> another thread may have called SCardReleaseContext
-		 * -> so the mMutex has been unlocked */
+		 *    so the mMutex has been unlocked (and is now invalid)
+		 * -> another thread may have called SCardDisconnect
+		 *    so the mMutex is STILL locked
+		 * since we don't know just unlock the mutex */
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		return SCARD_E_INVALID_HANDLE;
+	}
 
 	if ((cbSendLength > MAX_BUFFER_SIZE_EXTENDED)
 		|| (*pcbRecvLength > MAX_BUFFER_SIZE_EXTENDED))
@@ -2801,7 +2861,7 @@ retry:
 
 	if (sharing_shall_block && (SCARD_E_SHARING_VIOLATION == rv))
 	{
-		(void)pthread_mutex_unlock(currentContextMap->mMutex);
+		(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 		(void)SYS_USleep(PCSCLITE_LOCK_POLL_RATE);
 		goto retry;
 	}
@@ -2809,7 +2869,7 @@ retry:
 	*pcbRecvLength = scTransmitStruct.pcbRecvLength;
 
 end:
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	PROFILE_END(rv)
 
@@ -2895,12 +2955,12 @@ LONG SCardListReaders(SCARDCONTEXT hContext, /*@unused@*/ LPCSTR mszGroups,
 		return SCARD_E_INVALID_HANDLE;
 	}
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the context is still opened */
 	currentContextMap = SCardGetContext(hContext);
 	if (NULL == currentContextMap)
-		/* the context is now invalid
+		/* the hContext context is now invalid
 		 * -> another thread may have called SCardReleaseContext
 		 * -> so the mMutex has been unlocked */
 		return SCARD_E_INVALID_HANDLE;
@@ -2926,15 +2986,15 @@ LONG SCardListReaders(SCARDCONTEXT hContext, /*@unused@*/ LPCSTR mszGroups,
 
 	if (SCARD_AUTOALLOCATE == *pcchReaders)
 	{
+		if (NULL == mszReaders)
+		{
+			rv = SCARD_E_INVALID_PARAMETER;
+			goto end;
+		}
 		buf = malloc(dwReadersLen);
 		if (NULL == buf)
 		{
 			rv = SCARD_E_NO_MEMORY;
-			goto end;
-		}
-		if (NULL == mszReaders)
-		{
-			rv = SCARD_E_INVALID_PARAMETER;
 			goto end;
 		}
 		*(char **)mszReaders = buf;
@@ -2971,7 +3031,7 @@ end:
 	/* set the reader names length */
 	*pcchReaders = dwReadersLen;
 
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	PROFILE_END(rv)
 	API_TRACE_OUT("%d", *pcchReaders)
@@ -3084,27 +3144,27 @@ LONG SCardListReaderGroups(SCARDCONTEXT hContext, LPSTR mszGroups,
 	if (NULL == currentContextMap)
 		return SCARD_E_INVALID_HANDLE;
 
-	(void)pthread_mutex_lock(currentContextMap->mMutex);
+	(void)pthread_mutex_lock(&currentContextMap->mMutex);
 
 	/* check the context is still opened */
 	currentContextMap = SCardGetContext(hContext);
 	if (NULL == currentContextMap)
-		/* the context is now invalid
+		/* the hContext context is now invalid
 		 * -> another thread may have called SCardReleaseContext
 		 * -> so the mMutex has been unlocked */
 		return SCARD_E_INVALID_HANDLE;
 
 	if (SCARD_AUTOALLOCATE == *pcchGroups)
 	{
+		if (NULL == mszGroups)
+		{
+			rv = SCARD_E_INVALID_PARAMETER;
+			goto end;
+		}
 		buf = malloc(dwGroups);
 		if (NULL == buf)
 		{
 			rv = SCARD_E_NO_MEMORY;
-			goto end;
-		}
-		if (NULL == mszGroups)
-		{
-			rv = SCARD_E_INVALID_PARAMETER;
 			goto end;
 		}
 		*(char **)mszGroups = buf;
@@ -3126,7 +3186,7 @@ LONG SCardListReaderGroups(SCARDCONTEXT hContext, LPSTR mszGroups,
 end:
 	*pcchGroups = dwGroups;
 
-	(void)pthread_mutex_unlock(currentContextMap->mMutex);
+	(void)pthread_mutex_unlock(&currentContextMap->mMutex);
 
 	PROFILE_END(rv)
 
@@ -3299,29 +3359,22 @@ static LONG SCardAddContext(SCARDCONTEXT hContext, DWORD dwClientID)
 	newContextMap->dwClientID = dwClientID;
 	newContextMap->cancellable = FALSE;
 
-	newContextMap->mMutex = malloc(sizeof(pthread_mutex_t));
-	if (NULL == newContextMap->mMutex)
-	{
-		Log2(PCSC_LOG_DEBUG, "Freeing SCONTEXTMAP @%p", newContextMap);
-		free(newContextMap);
-		return SCARD_E_NO_MEMORY;
-	}
-	(void)pthread_mutex_init(newContextMap->mMutex, NULL);
+	(void)pthread_mutex_init(&newContextMap->mMutex, NULL);
 
-	lrv = list_init(&(newContextMap->channelMapList));
+	lrv = list_init(&newContextMap->channelMapList);
 	if (lrv < 0)
 	{
 		Log2(PCSC_LOG_CRITICAL, "list_init failed with return value: %d", lrv);
 		goto error;
 	}
 
-	lrv = list_attributes_seeker(&(newContextMap->channelMapList),
+	lrv = list_attributes_seeker(&newContextMap->channelMapList,
 		CHANNEL_MAP_seeker);
 	if (lrv <0)
 	{
 		Log2(PCSC_LOG_CRITICAL,
 			"list_attributes_seeker failed with return value: %d", lrv);
-		list_destroy(&(newContextMap->channelMapList));
+		list_destroy(&newContextMap->channelMapList);
 		goto error;
 	}
 
@@ -3330,7 +3383,7 @@ static LONG SCardAddContext(SCARDCONTEXT hContext, DWORD dwClientID)
 	{
 		Log2(PCSC_LOG_CRITICAL, "list_append failed with return value: %d",
 			lrv);
-		list_destroy(&(newContextMap->channelMapList));
+		list_destroy(&newContextMap->channelMapList);
 		goto error;
 	}
 
@@ -3338,8 +3391,7 @@ static LONG SCardAddContext(SCARDCONTEXT hContext, DWORD dwClientID)
 
 error:
 
-	(void)pthread_mutex_destroy(newContextMap->mMutex);
-	free(newContextMap->mMutex);
+	(void)pthread_mutex_destroy(&newContextMap->mMutex);
 	free(newContextMap);
 
 	return SCARD_E_NO_MEMORY;
@@ -3414,14 +3466,12 @@ static LONG SCardCleanContext(SCONTEXTMAP * targetContextMap)
 	targetContextMap->hContext = 0;
 	(void)ClientCloseSession(targetContextMap->dwClientID);
 	targetContextMap->dwClientID = 0;
-	(void)pthread_mutex_destroy(targetContextMap->mMutex);
-	free(targetContextMap->mMutex);
-	targetContextMap->mMutex = NULL;
+	(void)pthread_mutex_destroy(&targetContextMap->mMutex);
 
-	listSize = list_size(&(targetContextMap->channelMapList));
+	listSize = list_size(&targetContextMap->channelMapList);
 	for (list_index = 0; list_index < listSize; list_index++)
 	{
-		currentChannelMap = list_get_at(&(targetContextMap->channelMapList),
+		currentChannelMap = list_get_at(&targetContextMap->channelMapList,
 			list_index);
 		if (NULL == currentChannelMap)
 		{
@@ -3436,7 +3486,7 @@ static LONG SCardCleanContext(SCONTEXTMAP * targetContextMap)
 		}
 
 	}
-	list_destroy(&(targetContextMap->channelMapList));
+	list_destroy(&targetContextMap->channelMapList);
 
 	lrv = list_delete(&contextMapList, targetContextMap);
 	if (lrv < 0)
@@ -3467,7 +3517,7 @@ static LONG SCardAddHandle(SCARDHANDLE hCard, SCONTEXTMAP * currentContextMap,
 	newChannelMap->hCard = hCard;
 	newChannelMap->readerName = strdup(readerName);
 
-	lrv = list_append(&(currentContextMap->channelMapList), newChannelMap);
+	lrv = list_append(&currentContextMap->channelMapList, newChannelMap);
 	if (lrv < 0)
 	{
 		free(newChannelMap->readerName);
@@ -3494,7 +3544,7 @@ static LONG SCardRemoveHandle(SCARDHANDLE hCard)
 
 	free(currentChannelMap->readerName);
 
-	lrv = list_delete(&(currentContextMap->channelMapList), currentChannelMap);
+	lrv = list_delete(&currentContextMap->channelMapList, currentChannelMap);
 	if (lrv < 0)
 	{
 		Log2(PCSC_LOG_CRITICAL,
@@ -3545,7 +3595,7 @@ static LONG SCardGetContextAndChannelFromHandleTH(SCARDHANDLE hCard,
 				list_index);
 			continue;
 		}
-		currentChannelMap = list_seek(&(currentContextMap->channelMapList),
+		currentChannelMap = list_seek(&currentContextMap->channelMapList,
 			&hCard);
 		if (currentChannelMap != NULL)
 		{
@@ -3586,25 +3636,6 @@ LONG SCardCheckDaemonAvailability(void)
 	}
 
 	return SCARD_S_SUCCESS;
-}
-
-static void SCardInvalidateHandles(void)
-{
-	/* invalid all handles */
-	(void)SCardLockThread();
-
-	while (list_size(&contextMapList) != 0)
-	{
-		SCONTEXTMAP * currentContextMap;
-
-		currentContextMap = list_get_at(&contextMapList, 0);
-		if (currentContextMap != NULL)
-			(void)SCardCleanContext(currentContextMap);
-		else
-			Log1(PCSC_LOG_CRITICAL, "list_get_at returned NULL");
-	}
-
-	(void)SCardUnlockThread();
 }
 
 static LONG getReaderStates(SCONTEXTMAP * currentContextMap)

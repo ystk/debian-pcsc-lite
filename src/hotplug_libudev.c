@@ -1,10 +1,36 @@
 /*
- * MUSCLE SmartCard Development ( http://www.linuxnet.com )
+ * MUSCLE SmartCard Development ( http://pcsclite.alioth.debian.org/pcsclite.html )
  *
  * Copyright (C) 2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: hotplug_libudev.c 6353 2012-06-25 12:40:58Z rousseau $
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+Changes to this license can be made only by the copyright author with
+explicit written consent.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * $Id: hotplug_libudev.c 6851 2014-02-14 15:43:32Z rousseau $
  */
 
 /**
@@ -31,11 +57,12 @@
 #include "strlcpycat.h"
 
 #undef DEBUG_HOTPLUG
-#define ADD_SERIAL_NUMBER
-#define ADD_INTERFACE_NAME
 
 #define FALSE			0
 #define TRUE			1
+
+extern char Add_Interface_In_Name;
+extern char Add_Serial_In_Name;
 
 pthread_mutex_t usbNotifierMutex;
 
@@ -151,6 +178,14 @@ static LONG HPReadBundleValues(void)
 			GET_KEY(PCSCLITE_HP_MANUKEY_NAME, &manuIDs)
 			GET_KEY(PCSCLITE_HP_PRODKEY_NAME, &productIDs)
 			GET_KEY(PCSCLITE_HP_NAMEKEY_NAME, &readerNames)
+
+			if  ((list_size(manuIDs) != list_size(productIDs))
+				|| (list_size(manuIDs) != list_size(readerNames)))
+			{
+				Log2(PCSC_LOG_CRITICAL, "Error parsing %s", fullPath);
+				(void)closedir(hpDir);
+				return -1;
+			}
 
 			/* Get CFBundleName */
 			rv = LTPBundleFindValueWithKey(&plist, PCSCLITE_HP_CFBUNDLE_NAME,
@@ -294,6 +329,7 @@ static void HPAddDevice(struct udev_device *dev, struct udev_device *parent,
 	char fullname[MAX_READERNAME];
 	struct _driverTracker *driver, *classdriver;
 	const char *sSerialNumber = NULL, *sInterfaceName = NULL;
+	const char *sInterfaceNumber;
 	LONG ret;
 	int bInterfaceNumber;
 
@@ -310,8 +346,12 @@ static void HPAddDevice(struct udev_device *dev, struct udev_device *parent,
 
 	Log2(PCSC_LOG_INFO, "Adding USB device: %s", driver->readerName);
 
-	bInterfaceNumber = atoi(udev_device_get_sysattr_value(dev,
-		"bInterfaceNumber"));
+	sInterfaceNumber = udev_device_get_sysattr_value(dev, "bInterfaceNumber");
+	if (sInterfaceNumber)
+		bInterfaceNumber = atoi(sInterfaceNumber);
+	else
+		bInterfaceNumber = 0;
+
 	(void)snprintf(deviceName, sizeof(deviceName),
 		"usb:%04x/%04x:libudev:%d:%s", driver->manuID, driver->productID,
 		bInterfaceNumber, devpath);
@@ -334,13 +374,11 @@ static void HPAddDevice(struct udev_device *dev, struct udev_device *parent,
 		return;
 	}
 
-#ifdef ADD_INTERFACE_NAME
-	sInterfaceName = udev_device_get_sysattr_value(dev, "interface");
-#endif
+	if (Add_Interface_In_Name)
+		sInterfaceName = udev_device_get_sysattr_value(dev, "interface");
 
-#ifdef ADD_SERIAL_NUMBER
-	sSerialNumber = udev_device_get_sysattr_value(parent, "serial");
-#endif
+	if (Add_Serial_In_Name)
+		sSerialNumber = udev_device_get_sysattr_value(parent, "serial");
 
 	/* name from the Info.plist file */
 	strlcpy(fullname, driver->readerName, sizeof(fullname));

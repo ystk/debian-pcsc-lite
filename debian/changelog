@@ -1,14 +1,124 @@
-pcsc-lite (1.8.4-1+deb7u1) wheezy; urgency=low
+pcsc-lite (1.8.11-3) unstable; urgency=medium
 
-  * Fix "failed upgrade squeeze -> wheezy" by removing addgroup call
-    (Closes: #707756)
-    The pcscd group was instroduced in pcsc-lite 1.6.0 no more used
-    since pcsc-lite 1.8.0
-  * Correctly check systemd is running (backport from change in 1.8.8-3)
-  * debian/patches/{readerfactory,winscard_clnt}: two important fixes from
-    upstream newer versions.
+  * Fix "run dh-autoreconf to update config.{sub, guess} and {libtool,
+    aclocal}.m4" by using dh-autoreconf (Closes: #748275)
+  * debian/control: Standards-Version: 3.9.4 -> 3.9.5. No change needed.
 
- -- Ludovic Rousseau <rousseau@debian.org>  Sat, 11 May 2013 11:49:01 +0000
+ -- Ludovic Rousseau <rousseau@debian.org>  Sun, 18 May 2014 17:18:25 +0200
+
+pcsc-lite (1.8.11-2) unstable; urgency=medium
+
+  * Fix "pcscd should rely on dh-systemd to enable the socket" let dh-systemd
+    do its work. The package already Build-Depends: dh-systemd
+    (Closes: #748047)
+  * debian/pcscd.{postinst,postrm}: remove these now useless files.
+    The /etc/readeer.conf file is no more used since 1.6.0-1. These files
+    can be removed since wheezy (actual stable).
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Wed, 14 May 2014 14:24:06 +0200
+
+pcsc-lite (1.8.11-1) unstable; urgency=medium
+
+  * New upstream release
+  * debian/watch: update URL
+  * debian/rules: build in parallel
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Fri, 14 Feb 2014 17:20:52 +0100
+
+pcsc-lite (1.8.10-1) unstable; urgency=low
+
+  * New upstream release
+  * debian/libpcsclite1.symbols: remove the log_msg symbol. The bug is fixed
+    upstream.
+  * debian/control: fix lintian vcs-field-not-canonical for Vcs-Svn
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Sat, 19 Oct 2013 18:44:32 +0200
+
+pcsc-lite (1.8.9-1) unstable; urgency=low
+
+  * New upstream release
+  * debian/control: try to fix lintian vcs-field-not-canonical
+  * debian/control: Standards-Version: 3.9.3 -> 3.9.4. No change needed.
+  * debian/libpcsclite1.symbols: add an entry for log_msg. It is a bug from
+    upstream bug lintian comlains if the symbol is not present with
+    symbols-file-contains-current-version-with-debian-revision
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Wed, 16 Oct 2013 16:59:16 +0200
+
+pcsc-lite (1.8.8-4) unstable; urgency=low
+
+  * Fix "[PATCH] use dh-systemd" (Closes: #715257)
+  * Fix lintian debug-package-for-multi-arch-same-pkg-not-coinstallable
+    debian/control: Add "Multi-Arch: same" for libpcsclite1-dbg
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Sat, 11 May 2013 14:02:11 +0200
+
+pcsc-lite (1.8.8-3) unstable; urgency=low
+
+  [ Martin Pitt ]
+  * debian/pcscd.postinst: Check whether systemd init is running, not just for
+    the cgroup (which is also being used by logind).
+
+  [ Ludovic Rousseau ]
+  * remove Depends: adduser since addgroup is no more used
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Sat, 11 May 2013 13:46:16 +0200
+
+pcsc-lite (1.8.8-2) unstable; urgency=low
+
+  * Fix "Please include SONAME in debug package name" rename libpcsclite-dbg
+    in libpcsclite1-dbg (Closes: #698372)
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Sat, 09 Feb 2013 18:59:05 +0100
+
+pcsc-lite (1.8.8-1) unstable; urgency=low
+
+  * New upstream release
+  * do not use a pcscd group any more. pcscd is started at boot or by systemd
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Wed, 16 Jan 2013 16:24:42 +0100
+
+pcsc-lite (1.8.7-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Wed, 28 Nov 2012 20:28:14 +0100
+
+pcsc-lite (1.8.6-4) unstable; urgency=low
+
+  * Fix "Incorrect LSB header, Should-Start contains obsolete hal"
+    remove hal dependency from init script (Closes: #694019)
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Fri, 26 Oct 2012 13:53:12 +0200
+
+pcsc-lite (1.8.6-3) unstable; urgency=low
+
+  * debian/libpcsclite1.symbols: update the versioning to exact (or more
+    realistic) values.
+    See Debian bug #690074
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Wed, 24 Oct 2012 13:58:56 +0200
+
+pcsc-lite (1.8.6-2) unstable; urgency=low
+
+  * Fix "Wrong way of inhibiting start when using systemd" by removing the
+    useless (and wrong) code (Closes: #691086)
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Wed, 24 Oct 2012 13:47:03 +0200
+
+pcsc-lite (1.8.6-1) unstable; urgency=low
+
+  * New upstream release
+  * debian/libpcsclite1.symbols: provide list symbols provided by
+    libpcsclite.so.1 library
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Thu, 30 Aug 2012 20:05:30 +0200
+
+pcsc-lite (1.8.5-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Sat, 04 Aug 2012 16:36:31 +0200
 
 pcsc-lite (1.8.4-1) unstable; urgency=high
 

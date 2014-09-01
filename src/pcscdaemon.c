@@ -1,12 +1,38 @@
 /*
- * MUSCLE SmartCard Development ( http://www.linuxnet.com )
+ * MUSCLE SmartCard Development ( http://pcsclite.alioth.debian.org/pcsclite.html )
  *
  * Copyright (C) 1999-2002
- *  David Corcoran <corcoran@linuxnet.com>
+ *  David Corcoran <corcoran@musclecard.com>
  * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: pcscdaemon.c 6105 2011-11-14 10:19:44Z rousseau $
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+Changes to this license can be made only by the copyright author with
+explicit written consent.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * $Id: pcscdaemon.c 6851 2014-02-14 15:43:32Z rousseau $
  */
 
 /**
@@ -46,6 +72,7 @@
 #include "configfile.h"
 #include "powermgt_generic.h"
 #include "utils.h"
+#include "eventhandler.h"
 
 #ifndef TRUE
 #define TRUE 1
@@ -59,6 +86,8 @@ char SocketActivated = FALSE;
 static int ExitValue = EXIT_FAILURE;
 int HPForceReaderPolling = 0;
 static int pipefd[] = {-1, -1};
+char Add_Serial_In_Name = TRUE;
+char Add_Interface_In_Name = TRUE;
 
 /*
  * Some internal functions
@@ -86,6 +115,21 @@ static void SVCServiceRunLoop(void)
 
 	while (TRUE)
 	{
+		if (AraKiri)
+		{
+			/* stop the hotpug thread and waits its exit */
+#ifdef USE_USB
+			(void)HPStopHotPluggables();
+#endif
+			(void)SYS_Sleep(1);
+
+			/* now stop all the drivers */
+			RFCleanupReaders();
+			EHDeinitializeEventStructures();
+			ContextsDeinitialize();
+			at_exit();
+		}
+
 		switch (rsp = ProcessEventsServer(&dwClientID))
 		{
 
@@ -120,20 +164,6 @@ static void SVCServiceRunLoop(void)
 				rsp);
 			break;
 		}
-
-		if (AraKiri)
-		{
-			/* stop the hotpug thread and waits its exit */
-#ifdef USE_USB
-			(void)HPStopHotPluggables();
-#endif
-			(void)SYS_Sleep(1);
-
-			/* now stop all the drivers */
-			RFCleanupReaders();
-			ContextsDeinitialize();
-			at_exit();
-		}
 	}
 }
 
@@ -149,6 +179,7 @@ int main(int argc, char **argv)
 	int customMaxThreadCardHandles = 0;
 	int opt;
 	int limited_rights = FALSE;
+	int r;
 #ifdef HAVE_GETOPT_LONG
 	int option_index = 0;
 	static struct option long_options[] = {
@@ -168,10 +199,12 @@ int main(int argc, char **argv)
 		{"max-card-handle-per-thread", 1, NULL, 's'},
 		{"max-card-handle-per-reader", 1, NULL, 'r'},
 		{"auto-exit", 0, NULL, 'x'},
+		{"reader-name-no-serial", 0, NULL, 'S'},
+		{"reader-name-no-interface", 0, NULL, 'I'},
 		{NULL, 0, NULL, 0}
 	};
 #endif
-#define OPT_STRING "c:fTdhvaeCHt:r:s:x"
+#define OPT_STRING "c:fTdhvaeCHt:r:s:xSI"
 
 	newReaderConfig = NULL;
 	setToForeground = FALSE;
@@ -303,6 +336,14 @@ int main(int argc, char **argv)
 					TIME_BEFORE_SUICIDE);
 				break;
 
+			case 'S':
+				Add_Serial_In_Name = FALSE;
+				break;
+
+			case 'I':
+				Add_Interface_In_Name = FALSE;
+				break;
+
 			default:
 				print_usage (argv[0]);
 				return EXIT_FAILURE;
@@ -398,7 +439,12 @@ int main(int argc, char **argv)
 
 	/* like in daemon(3): changes the current working directory to the
 	 * root ("/") */
-	(void)chdir("/");
+	r = chdir("/");
+	if (r < 0)
+	{
+		Log2(PCSC_LOG_CRITICAL, "chdir() failed: %s", strerror(errno));
+		return EXIT_FAILURE;
+	}
 
 	/*
 	 * If this is set to one the user has asked it not to fork
@@ -406,6 +452,7 @@ int main(int argc, char **argv)
 	if (!setToForeground)
 	{
 		int pid;
+		int fd;
 
 		if (pipe(pipefd) == -1)
 		{
@@ -422,9 +469,17 @@ int main(int argc, char **argv)
 
 		/* like in daemon(3): redirect standard input, standard output
 		 * and standard error to /dev/null */
-		(void)close(0);
-		(void)close(1);
-		(void)close(2);
+		fd = open("/dev/null", O_RDWR);
+		if (fd != -1)
+		{
+			dup2(fd, STDIN_FILENO);
+			dup2(fd, STDOUT_FILENO);
+			dup2(fd, STDERR_FILENO);
+
+			/* do not close stdin, stdout or stderr */
+			if (fd > 2)
+				close(fd);
+		}
 
 		if (pid)
 		/* in the father */
@@ -467,13 +522,11 @@ int main(int argc, char **argv)
 	/*
 	 * If PCSCLITE_IPC_DIR does not exist then create it
 	 */
-	rv = stat(PCSCLITE_IPC_DIR, &fStatBuf);
-	if (rv < 0)
 	{
 		int mode = S_IROTH | S_IXOTH | S_IRGRP | S_IXGRP | S_IRWXU;
 
 		rv = mkdir(PCSCLITE_IPC_DIR, mode);
-		if (rv != 0)
+		if ((rv != 0) && (errno != EEXIST))
 		{
 			Log2(PCSC_LOG_CRITICAL,
 				"cannot create " PCSCLITE_IPC_DIR ": %s", strerror(errno));
@@ -531,9 +584,16 @@ int main(int argc, char **argv)
 		if (f != -1)
 		{
 			char pid[PID_ASCII_SIZE];
+			ssize_t rr;
 
 			(void)snprintf(pid, sizeof(pid), "%u\n", (unsigned) getpid());
-			(void)write(f, pid, strlen(pid));
+			rr = write(f, pid, strlen(pid) + 1);
+			if (rr < 0)
+			{
+				Log2(PCSC_LOG_CRITICAL,
+					"writing " PCSCLITE_RUN_PID " failed: %s",
+					strerror(errno));
+			}
 			(void)close(f);
 
 			/* set mode so that the file is world readable even is umask is
@@ -590,8 +650,10 @@ int main(int argc, char **argv)
 	 * Set up the search for USB/PCMCIA devices
 	 */
 	rv = HPSearchHotPluggables();
+#ifndef USE_SERIAL
 	if (rv)
 		at_exit();
+#endif
 
 	rv = HPRegisterForHotplugEvents();
 	if (rv)
@@ -612,9 +674,14 @@ int main(int argc, char **argv)
 	if (pipefd[1] >= 0)
 	{
 		char buf = 0;
+		ssize_t rr;
 
 		/* write a 0 (success) to father process */
-		write(pipefd[1], &buf, 1);
+		rr = write(pipefd[1], &buf, 1);
+		if (rr < 0)
+		{
+			Log2(PCSC_LOG_ERROR, "write() failed: %s", strerror(errno));
+		}
 		close(pipefd[1]);
 	}
 
@@ -633,10 +700,15 @@ static void at_exit(void)
 	if (pipefd[1] >= 0)
 	{
 		char buf;
+		ssize_t r;
 
 		/* write the error code to father process */
 		buf = ExitValue;
-		write(pipefd[1], &buf, 1);
+		r = write(pipefd[1], &buf, 1);
+		if (r < 0)
+		{
+			Log2(PCSC_LOG_ERROR, "write() failed: %s", strerror(errno));
+		}
 		close(pipefd[1]);
 	}
 
@@ -726,7 +798,7 @@ static void signal_trap(int sig)
 static void print_version (void)
 {
 	printf("%s version %s.\n",  PACKAGE, VERSION);
-	printf("Copyright (C) 1999-2002 by David Corcoran <corcoran@linuxnet.com>.\n");
+	printf("Copyright (C) 1999-2002 by David Corcoran <corcoran@musclecard.com>.\n");
 	printf("Copyright (C) 2001-2011 by Ludovic Rousseau <ludovic.rousseau@free.fr>.\n");
 	printf("Copyright (C) 2003-2004 by Damien Sauveron <sauveron@labri.fr>.\n");
 	printf("Report bugs to <muscle@lists.musclecard.com>.\n");
@@ -756,6 +828,8 @@ static void print_usage (char const * const progname)
 	printf("  -s, --max-card-handle-per-thread	maximum number of card handle per thread (default: %d)\n", PCSC_MAX_CONTEXT_CARD_HANDLES);
 	printf("  -r, --max-card-handle-per-reader	maximum number of card handle per reader (default: %d)\n", PCSC_MAX_READER_HANDLES);
 	printf("  -x, --auto-exit	pcscd will quit after %d seconds of inactivity\n", TIME_BEFORE_SUICIDE);
+	printf("  -S, --reader-name-no-serial    do not include the USB serial number in the name\n");
+	printf("  -I, --reader-name-no-interface do not include the USB interface name in the name\n");
 #else
 	printf("  -a    log APDU commands and results\n");
 	printf("  -c	path to reader.conf\n");

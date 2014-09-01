@@ -1,12 +1,38 @@
 /*
- * MUSCLE SmartCard Development ( http://www.linuxnet.com )
+ * MUSCLE SmartCard Development ( http://pcsclite.alioth.debian.org/pcsclite.html )
  *
  * Copyright (C) 1999-2004
- *  David Corcoran <corcoran@linuxnet.com>
+ *  David Corcoran <corcoran@musclecard.com>
  * Copyright (C) 2002-2011
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: winscard.c 6322 2012-06-05 09:17:50Z rousseau $
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+Changes to this license can be made only by the copyright author with
+explicit written consent.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * $Id: winscard.c 6851 2014-02-14 15:43:32Z rousseau $
  */
 
 /**
@@ -235,7 +261,6 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 		szReader, dwPreferredProtocols);
 
 	rv = RFReaderInfo((LPSTR) szReader, &rContext);
-
 	if (rv != SCARD_S_SUCCESS)
 	{
 		Log2(PCSC_LOG_ERROR, "Reader %s Not Found", szReader);
@@ -247,7 +272,7 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 	 */
 	rv = RFCheckReaderStatus(rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*******************************************
 	 *
@@ -261,7 +286,8 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 	if (rContext->contexts == PCSCLITE_SHARING_EXCLUSIVE_CONTEXT)
 	{
 		Log1(PCSC_LOG_ERROR, "Error Reader Exclusive");
-		return SCARD_E_SHARING_VIOLATION;
+		rv = SCARD_E_SHARING_VIOLATION;
+		goto exit;
 	}
 
 	/*
@@ -288,7 +314,8 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 		if (!(readerState & SCARD_PRESENT))
 		{
 			Log1(PCSC_LOG_DEBUG, "Card Not Inserted");
-			return SCARD_E_NO_SMARTCARD;
+			rv = SCARD_E_NO_SMARTCARD;
+			goto exit;
 		}
 
 		/* Power on (again) the card if needed */
@@ -320,7 +347,8 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 		{
 			Log1(PCSC_LOG_ERROR, "Card Not Powered");
 			(void)pthread_mutex_unlock(&rContext->powerState_lock);
-			return SCARD_W_UNPOWERED_CARD;
+			rv = SCARD_W_UNPOWERED_CARD;
+			goto exit;
 		}
 
 		/* the card is now in use */
@@ -366,13 +394,15 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 				if (SET_PROTOCOL_PPS_FAILED == ret)
 				{
 					(void)pthread_mutex_unlock(rContext->mMutex);
-					return SCARD_W_UNRESPONSIVE_CARD;
+					rv = SCARD_W_UNRESPONSIVE_CARD;
+					goto exit;
 				}
 
 				if (SET_PROTOCOL_WRONG_ARGUMENT == ret)
 				{
 					(void)pthread_mutex_unlock(rContext->mMutex);
-					return SCARD_E_PROTO_MISMATCH;
+					rv = SCARD_E_PROTO_MISMATCH;
+					goto exit;
 				}
 
 				/* use negotiated protocol */
@@ -385,7 +415,10 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 				(void)pthread_mutex_unlock(rContext->mMutex);
 
 				if (! (dwPreferredProtocols & rContext->readerState->cardProtocol))
-					return SCARD_E_PROTO_MISMATCH;
+				{
+					rv = SCARD_E_PROTO_MISMATCH;
+					goto exit;
+				}
 			}
 		}
 	}
@@ -439,7 +472,8 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 		{
 			(void)RFDestroyReaderHandle(*phCard);
 			*phCard = 0;
-			return SCARD_E_SHARING_VIOLATION;
+			rv = SCARD_E_SHARING_VIOLATION;
+			goto exit;
 		}
 	}
 	else
@@ -469,9 +503,8 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 
 		*phCard = 0;
 
-		PROFILE_END
-
-		return SCARD_F_INTERNAL_ERROR;
+		rv = SCARD_F_INTERNAL_ERROR;
+		goto exit;
 	}
 
 	/*
@@ -479,9 +512,12 @@ LONG SCardConnect(/*@unused@*/ SCARDCONTEXT hContext, LPCSTR szReader,
 	 */
 	rContext->readerState->readerSharing = rContext->contexts;
 
+exit:
+	UNREF_READER(rContext)
+
 	PROFILE_END
 
-	return SCARD_S_SUCCESS;
+	return rv;
 }
 
 LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
@@ -526,14 +562,14 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 	 */
 	rv = RFCheckReaderStatus(rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Make sure no one has a lock on this reader
 	 */
 	rv = RFCheckSharing(hCard, rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	if (dwInitialization == SCARD_RESET_CARD ||
 		dwInitialization == SCARD_UNPOWER_CARD)
@@ -558,7 +594,6 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 			rv = IFDPowerICC(rContext, IFD_POWER_UP,
 				rContext->readerState->cardAtr, &dwAtrLen);
 		}
-		rContext->readerState->cardAtrLength = dwAtrLen;
 
 		/* the protocol is unset after a power on */
 		rContext->readerState->cardProtocol = SCARD_PROTOCOL_UNDEFINED;
@@ -585,13 +620,15 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 			if (rv == SCARD_W_REMOVED_CARD)
 			{
 				rContext->readerState->readerState = SCARD_ABSENT;
-				return SCARD_E_NO_SMARTCARD;
+				rv = SCARD_E_NO_SMARTCARD;
+				goto exit;
 			}
 			else
 			{
 				rContext->readerState->readerState =
 					SCARD_PRESENT | SCARD_SWALLOWED;
-				return SCARD_W_UNRESPONSIVE_CARD;
+				rv = SCARD_W_UNRESPONSIVE_CARD;
+				goto exit;
 			}
 		}
 	}
@@ -601,11 +638,17 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 			uint32_t readerState = rContext->readerState->readerState;
 
 			if (readerState & SCARD_ABSENT)
-				return SCARD_E_NO_SMARTCARD;
+			{
+				rv = SCARD_E_NO_SMARTCARD;
+				goto exit;
+			}
 
 			if ((readerState & SCARD_PRESENT)
 				&& (readerState & SCARD_SWALLOWED))
-				return SCARD_W_UNRESPONSIVE_CARD;
+			{
+				rv = SCARD_W_UNRESPONSIVE_CARD;
+				goto exit;
+			}
 		}
 
 	/*******************************************
@@ -645,13 +688,15 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 				if (SET_PROTOCOL_PPS_FAILED == ret)
 				{
 					(void)pthread_mutex_unlock(rContext->mMutex);
-					return SCARD_W_UNRESPONSIVE_CARD;
+					rv = SCARD_W_UNRESPONSIVE_CARD;
+					goto exit;
 				}
 
 				if (SET_PROTOCOL_WRONG_ARGUMENT == ret)
 				{
 					(void)pthread_mutex_unlock(rContext->mMutex);
-					return SCARD_E_PROTO_MISMATCH;
+					rv = SCARD_E_PROTO_MISMATCH;
+					goto exit;
 				}
 
 				/* use negotiated protocol */
@@ -664,7 +709,10 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 				(void)pthread_mutex_unlock(rContext->mMutex);
 
 				if (! (dwPreferredProtocols & rContext->readerState->cardProtocol))
-					return SCARD_E_PROTO_MISMATCH;
+				{
+					rv = SCARD_E_PROTO_MISMATCH;
+					goto exit;
+				}
 			}
 		}
 	}
@@ -700,25 +748,30 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 			/*
 			 * Do nothing - we are already exclusive
 			 */
-		} else
+		}
+		else
 		{
 			if (rContext->contexts == PCSCLITE_SHARING_LAST_CONTEXT)
 			{
 				rContext->contexts = PCSCLITE_SHARING_EXCLUSIVE_CONTEXT;
 				(void)RFLockSharing(hCard, rContext);
-			} else
+			}
+			else
 			{
-				return SCARD_E_SHARING_VIOLATION;
+				rv = SCARD_E_SHARING_VIOLATION;
+				goto exit;
 			}
 		}
-	} else if (dwShareMode == SCARD_SHARE_SHARED)
+	}
+	else if (dwShareMode == SCARD_SHARE_SHARED)
 	{
 		if (rContext->contexts != PCSCLITE_SHARING_EXCLUSIVE_CONTEXT)
 		{
 			/*
 			 * Do nothing - in sharing mode already
 			 */
-		} else
+		}
+		else
 		{
 			/*
 			 * We are in exclusive mode but want to share now
@@ -726,14 +779,16 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 			(void)RFUnlockSharing(hCard, rContext);
 			rContext->contexts = PCSCLITE_SHARING_LAST_CONTEXT;
 		}
-	} else if (dwShareMode == SCARD_SHARE_DIRECT)
+	}
+	else if (dwShareMode == SCARD_SHARE_DIRECT)
 	{
 		if (rContext->contexts != PCSCLITE_SHARING_EXCLUSIVE_CONTEXT)
 		{
 			/*
 			 * Do nothing - in sharing mode already
 			 */
-		} else
+		}
+		else
 		{
 			/*
 			 * We are in exclusive mode but want to share now
@@ -741,8 +796,12 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 			(void)RFUnlockSharing(hCard, rContext);
 			rContext->contexts = PCSCLITE_SHARING_LAST_CONTEXT;
 		}
-	} else
-		return SCARD_E_INVALID_VALUE;
+	}
+	else
+	{
+		rv = SCARD_E_INVALID_VALUE;
+		goto exit;
+	}
 
 	/*
 	 * Clear a previous event to the application
@@ -754,7 +813,12 @@ LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode,
 	 */
 	rContext->readerState->readerSharing = rContext->contexts;
 
-	return SCARD_S_SUCCESS;
+	rv = SCARD_S_SUCCESS;
+
+exit:
+	UNREF_READER(rContext)
+
+	return rv;
 }
 
 LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
@@ -765,16 +829,16 @@ LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
 	if (hCard == 0)
 		return SCARD_E_INVALID_HANDLE;
 
-	/* get rContext corresponding to hCard */
-	rv = RFReaderInfoById(hCard, &rContext);
-	if (rv != SCARD_S_SUCCESS)
-		return rv;
-
 	if ((dwDisposition != SCARD_LEAVE_CARD)
 		&& (dwDisposition != SCARD_UNPOWER_CARD)
 		&& (dwDisposition != SCARD_RESET_CARD)
 		&& (dwDisposition != SCARD_EJECT_CARD))
 		return SCARD_E_INVALID_VALUE;
+
+	/* get rContext corresponding to hCard */
+	rv = RFReaderInfoById(hCard, &rContext);
+	if (rv != SCARD_S_SUCCESS)
+		return rv;
 
 	/*
 	 * wait until a possible transaction is finished
@@ -800,12 +864,12 @@ LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
 	{
 		if (rv != SCARD_E_SHARING_VIOLATION)
 		{
-			return rv;
+			goto exit;
 		}
 		else
 		{
 			if (SCARD_LEAVE_CARD != dwDisposition)
-				return rv;
+				goto exit;
 		}
 	}
 
@@ -989,7 +1053,7 @@ LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
 
 		if ((IFD_SUCCESS == rv) && (dwGetSize == sizeof(fct)))
 		{
-			Log1(PCSC_LOG_INFO, "Stoping polling thread");
+			Log1(PCSC_LOG_INFO, "Stopping polling thread");
 			fct(rContext->slot);
 		}
 	}
@@ -999,7 +1063,12 @@ LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition)
 	 */
 	rContext->readerState->readerSharing = rContext->contexts;
 
-	return SCARD_S_SUCCESS;
+	rv = SCARD_S_SUCCESS;
+
+exit:
+	UNREF_READER(rContext)
+
+	return rv;
 }
 
 LONG SCardBeginTransaction(SCARDHANDLE hCard)
@@ -1020,14 +1089,14 @@ LONG SCardBeginTransaction(SCARDHANDLE hCard)
 	 */
 	rv = RFCheckReaderStatus(rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Make sure some event has not occurred
 	 */
 	rv = RFCheckReaderEventState(rContext, hCard);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	rv = RFLockSharing(hCard, rContext);
 
@@ -1038,12 +1107,16 @@ LONG SCardBeginTransaction(SCARDHANDLE hCard)
 
 	Log2(PCSC_LOG_DEBUG, "Status: 0x%08lX", rv);
 
+exit:
+	UNREF_READER(rContext)
+
 	return rv;
 }
 
 LONG SCardEndTransaction(SCARDHANDLE hCard, DWORD dwDisposition)
 {
 	LONG rv;
+	LONG rv2;
 	READER_CONTEXT * rContext = NULL;
 
 	/*
@@ -1068,7 +1141,7 @@ LONG SCardEndTransaction(SCARDHANDLE hCard, DWORD dwDisposition)
 	 */
 	rv = RFCheckReaderEventState(rContext, hCard);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	if (dwDisposition == SCARD_RESET_CARD ||
 		dwDisposition == SCARD_UNPOWER_CARD)
@@ -1167,9 +1240,18 @@ LONG SCardEndTransaction(SCARDHANDLE hCard, DWORD dwDisposition)
 	/*
 	 * Unlock any blocks on this context
 	 */
-	(void)RFUnlockSharing(hCard, rContext);
+	/* we do not want to lose the previous rv value
+	 * So we use another variable */
+	rv2 = RFUnlockSharing(hCard, rContext);
+	if (rv2 != SCARD_S_SUCCESS)
+		/* if rv is already in error then do not change its value */
+		if (rv == SCARD_S_SUCCESS)
+			rv = rv2;
 
 	Log2(PCSC_LOG_DEBUG, "Status: 0x%08lX", rv);
+
+exit:
+	UNREF_READER(rContext)
 
 	return rv;
 }
@@ -1203,10 +1285,13 @@ LONG SCardStatus(SCARDHANDLE hCard, LPSTR mszReaderNames,
 	 */
 	rv = RFCheckSharing(hCard, rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	if (rContext->readerState->cardAtrLength > MAX_ATR_SIZE)
-		return SCARD_F_INTERNAL_ERROR;
+	{
+		rv = SCARD_F_INTERNAL_ERROR;
+		goto exit;
+	}
 
 	/*
 	 * This is a client side function however the server maintains the
@@ -1219,14 +1304,17 @@ LONG SCardStatus(SCARDHANDLE hCard, LPSTR mszReaderNames,
 	 */
 	rv = RFCheckReaderEventState(rContext, hCard);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Make sure the reader is working properly
 	 */
 	rv = RFCheckReaderStatus(rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
+
+exit:
+	UNREF_READER(rContext)
 
 	return rv;
 }
@@ -1254,32 +1342,40 @@ LONG SCardControl(SCARDHANDLE hCard, DWORD dwControlCode,
 	 */
 	rv = RFCheckSharing(hCard, rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	if (IFD_HVERSION_2_0 == rContext->version)
 		if (NULL == pbSendBuffer || 0 == cbSendLength)
-			return SCARD_E_INVALID_PARAMETER;
+		{
+			rv = SCARD_E_INVALID_PARAMETER;
+			goto exit;
+		}
 
 	/*
 	 * Make sure the reader is working properly
 	 */
 	rv = RFCheckReaderStatus(rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	if (IFD_HVERSION_2_0 == rContext->version)
 	{
 		/* we must wrap a API 3.0 client in an API 2.0 driver */
 		*lpBytesReturned = cbRecvLength;
-		return IFDControl_v2(rContext, (PUCHAR)pbSendBuffer,
+		rv = IFDControl_v2(rContext, (PUCHAR)pbSendBuffer,
 			cbSendLength, pbRecvBuffer, lpBytesReturned);
 	}
 	else
 		if (IFD_HVERSION_3_0 == rContext->version)
-			return IFDControl(rContext, dwControlCode, pbSendBuffer,
+			rv = IFDControl(rContext, dwControlCode, pbSendBuffer,
 				cbSendLength, pbRecvBuffer, cbRecvLength, lpBytesReturned);
 		else
-			return SCARD_E_UNSUPPORTED_FEATURE;
+			rv = SCARD_E_UNSUPPORTED_FEATURE;
+
+exit:
+	UNREF_READER(rContext)
+
+	return rv;
 }
 
 LONG SCardGetAttrib(SCARDHANDLE hCard, DWORD dwAttrId,
@@ -1301,21 +1397,21 @@ LONG SCardGetAttrib(SCARDHANDLE hCard, DWORD dwAttrId,
 	 */
 	rv = RFCheckSharing(hCard, rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Make sure the reader is working properly
 	 */
 	rv = RFCheckReaderStatus(rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Make sure some event has not occurred
 	 */
 	rv = RFCheckReaderEventState(rContext, hCard);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	rv = IFDGetCapabilities(rContext, dwAttrId, pcbAttrLen, pbAttr);
 	switch(rv)
@@ -1327,20 +1423,20 @@ LONG SCardGetAttrib(SCARDHANDLE hCard, DWORD dwAttrId,
 			/* Special case SCARD_ATTR_DEVICE_FRIENDLY_NAME as it is better
 			 * implemented in pcscd (it knows the friendly name)
 			 */
-			if (dwAttrId == SCARD_ATTR_DEVICE_FRIENDLY_NAME)
+			if ((SCARD_ATTR_DEVICE_FRIENDLY_NAME == dwAttrId)
+				|| (SCARD_ATTR_DEVICE_SYSTEM_NAME == dwAttrId))
 			{
 				unsigned int len = strlen(rContext->readerState->readerName)+1;
 
-				*pcbAttrLen = len;
 				if (len > *pcbAttrLen)
 					rv = SCARD_E_INSUFFICIENT_BUFFER;
 				else
 				{
 					(void)strlcpy((char *)pbAttr,
-						rContext->readerState->readerName, *pcbAttrLen);
+						rContext->readerState->readerName, len);
 					rv = SCARD_S_SUCCESS;
 				}
-
+				*pcbAttrLen = len;
 			}
 			else
 				rv = SCARD_E_UNSUPPORTED_FEATURE;
@@ -1351,6 +1447,9 @@ LONG SCardGetAttrib(SCARDHANDLE hCard, DWORD dwAttrId,
 		default:
 			rv = SCARD_E_NOT_TRANSACTED;
 	}
+
+exit:
+	UNREF_READER(rContext)
 
 	return rv;
 }
@@ -1374,30 +1473,35 @@ LONG SCardSetAttrib(SCARDHANDLE hCard, DWORD dwAttrId,
 	 */
 	rv = RFCheckSharing(hCard, rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Make sure the reader is working properly
 	 */
 	rv = RFCheckReaderStatus(rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Make sure some event has not occurred
 	 */
 	rv = RFCheckReaderEventState(rContext, hCard);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	rv = IFDSetCapabilities(rContext, dwAttrId, cbAttrLen, (PUCHAR)pbAttr);
 	if (rv == IFD_SUCCESS)
-		return SCARD_S_SUCCESS;
+		rv = SCARD_S_SUCCESS;
 	else
 		if (rv == IFD_ERROR_TAG)
-			return SCARD_E_UNSUPPORTED_FEATURE;
+			rv = SCARD_E_UNSUPPORTED_FEATURE;
 		else
-			return SCARD_E_NOT_TRANSACTED;
+			rv = SCARD_E_NOT_TRANSACTED;
+
+exit:
+	UNREF_READER(rContext)
+
+	return rv;
 }
 
 LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci,
@@ -1432,21 +1536,21 @@ LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci,
 	 */
 	rv = RFCheckSharing(hCard, rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Make sure the reader is working properly
 	 */
 	rv = RFCheckReaderStatus(rContext);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Make sure some event has not occurred
 	 */
 	rv = RFCheckReaderEventState(rContext, hCard);
 	if (rv != SCARD_S_SUCCESS)
-		return rv;
+		goto exit;
 
 	/*
 	 * Check for some common errors
@@ -1455,7 +1559,8 @@ LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci,
 	{
 		if (rContext->readerState->readerState & SCARD_ABSENT)
 		{
-			return SCARD_E_NO_SMARTCARD;
+			rv = SCARD_E_NO_SMARTCARD;
+			goto exit;
 		}
 	}
 
@@ -1465,7 +1570,8 @@ LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci,
 		{
 			if (pioSendPci->dwProtocol != rContext->readerState->cardProtocol)
 			{
-				return SCARD_E_PROTO_MISMATCH;
+				rv = SCARD_E_PROTO_MISMATCH;
+				goto exit;
 			}
 		}
 	}
@@ -1530,7 +1636,7 @@ LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci,
 	{
 		*pcbRecvLength = 0;
 		Log2(PCSC_LOG_ERROR, "Card not transacted: 0x%08lX", rv);
-		return rv;
+		goto exit;
 	}
 
 	/*
@@ -1539,13 +1645,18 @@ LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci,
 	if (tempRxLength < dwRxLength)
 	{
 		*pcbRecvLength = 0;
-		return SCARD_E_INSUFFICIENT_BUFFER;
+		rv = SCARD_E_INSUFFICIENT_BUFFER;
+		goto exit;
 	}
 
 	/*
 	 * Successful return
 	 */
 	*pcbRecvLength = dwRxLength;
-	return SCARD_S_SUCCESS;
+
+exit:
+	UNREF_READER(rContext)
+
+	return rv;
 }
 

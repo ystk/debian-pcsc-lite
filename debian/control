@@ -2,15 +2,15 @@ Source: pcsc-lite
 Section: misc
 Priority: optional
 Maintainer: Ludovic Rousseau <rousseau@debian.org>
-Build-Depends: debhelper (>= 9), flex, autotools-dev, libudev-dev [linux-any], libusb2-dev [kfreebsd-any], pkg-config, dpkg-dev (>= 1.16.1~)
-Standards-Version: 3.9.3
-Vcs-Svn: svn://svn.debian.org/svn/collab-maint/deb-maint/pcsc-lite/trunk
-Vcs-Browser: http://svn.debian.org/viewsvn/collab-maint/deb-maint/pcsc-lite/trunk/
+Build-Depends: debhelper (>= 9), flex, dh-autoreconf, libudev-dev [linux-any], libusb2-dev [kfreebsd-any], pkg-config, dpkg-dev (>= 1.16.1~), dh-systemd (>= 1.4)
+Standards-Version: 3.9.5
+Vcs-Svn: svn://anonscm.debian.org/collab-maint/deb-maint/pcsc-lite/trunk
+Vcs-Browser: http://anonscm.debian.org/viewvc/collab-maint/deb-maint/pcsc-lite/trunk/
 Homepage: http://pcsclite.alioth.debian.org/
 
 Package: pcscd
 Architecture: any
-Depends: libccid (>= 1.4.1~) | pcsc-ifd-handler, ${shlibs:Depends}, ${misc:Depends}, lsb-base (>= 3.0-6), adduser, libpcsclite1 (= ${binary:Version})
+Depends: libccid (>= 1.4.1~) | pcsc-ifd-handler, ${shlibs:Depends}, ${misc:Depends}, lsb-base (>= 3.0-6), libpcsclite1 (= ${binary:Version})
 Suggests: systemd
 Description: Middleware to access a smart card using PC/SC (daemon side)
  The purpose of PC/SC Lite is to provide a Windows(R) SCard interface
@@ -38,11 +38,14 @@ Description: Middleware to access a smart card using PC/SC (development files)
  This package also contains the PC/SC spying library: libpcscspy.so
  See http://ludovicrousseau.blogspot.com/2011/11/pcsc-api-spy-third-try.html
 
-Package: libpcsclite-dbg
+Package: libpcsclite1-dbg
 Section: debug
 Architecture: any
 Priority: extra
+Conflicts: libpcsclite-dbg
+Replaces: libpcsclite-dbg
 Depends: libpcsclite1 (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+Multi-Arch: same
 Description: Middleware to access a smart card using PC/SC (debugging symbols)
  The purpose of PC/SC Lite is to provide a Windows(R) SCard interface
  in a very small form factor for communicating to smart cards and

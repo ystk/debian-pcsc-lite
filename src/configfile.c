@@ -471,18 +471,44 @@ char *yytext;
 /*
  * Reads lexical config files and updates database.
  *
- * MUSCLE SmartCard Development ( http://www.linuxnet.com )
+ * MUSCLE SmartCard Development ( http://pcsclite.alioth.debian.org/pcsclite.html )
  *
  * Copyright (C) 1999-2002
- *  David Corcoran <corcoran@linuxnet.com>
+ *  David Corcoran <corcoran@musclecard.com>
  * Copyright (C) 2004
  *  Damien Sauveron <damien.sauveron@labri.fr>
  * Copyright (C) 2004-2010
  *  Ludovic Rousseau <ludovic.rousseau@free.fr>
  *
- * $Id: configfile.l 6215 2012-02-04 09:08:36Z rousseau $
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The name of the author may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+Changes to this license can be made only by the copyright author with
+explicit written consent.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * $Id: configfile.l 6851 2014-02-14 15:43:32Z rousseau $
  */
-#line 17 "configfile.l"
+#line 43 "configfile.l"
 #include <dirent.h>
 
 #include "wintypes.h"
@@ -497,7 +523,7 @@ static int iOldLinenumber;
 static char *pcPrevious;
 static char *pcCurrent;
 static char *pcFriendlyname;
-static const char *pcDevicename;
+static char *pcDevicename;
 static char *pcLibpath;
 static char *pcChannelid;
 static int badError;
@@ -508,7 +534,7 @@ const char *ConfFile;
 void tok_error(char *pcToken_error);
 
 #define YY_NO_INPUT 1
-#line 512 "configfile.c"
+#line 538 "configfile.c"
 
 #define INITIAL 0
 
@@ -693,10 +719,10 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 47 "configfile.l"
+#line 73 "configfile.l"
 
 
-#line 700 "configfile.c"
+#line 726 "configfile.c"
 
 	if ( !(yy_init) )
 		{
@@ -781,42 +807,42 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 49 "configfile.l"
+#line 75 "configfile.l"
 {}
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 50 "configfile.l"
+#line 76 "configfile.l"
 { iLinenumber++; }
 	YY_BREAK
 case 3:
 /* rule 3 can match eol */
 YY_RULE_SETUP
-#line 51 "configfile.l"
+#line 77 "configfile.l"
 { (void)evaluatetoken(yytext); }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 52 "configfile.l"
+#line 78 "configfile.l"
 {}
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 53 "configfile.l"
+#line 79 "configfile.l"
 { (void)evaluatetoken(yytext); }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 54 "configfile.l"
+#line 80 "configfile.l"
 { iOldLinenumber = iLinenumber; tok_error(yytext); }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 55 "configfile.l"
+#line 81 "configfile.l"
 ECHO;
 	YY_BREAK
-#line 820 "configfile.c"
+#line 846 "configfile.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -1777,7 +1803,7 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 55 "configfile.l"
+#line 81 "configfile.l"
 
 
 
@@ -1795,10 +1821,6 @@ void yyfree (void * ptr )
 
 int evaluatetoken(char *pcToken)
 {
-	int channelId = 0;
-	int p = 0;
-	unsigned int n = 0;
-
 	if (pcPrevious == NULL)
 	{	/* This is the key */
 		pcPrevious = strdup(pcToken);
@@ -1820,8 +1842,10 @@ int evaluatetoken(char *pcToken)
 		{
 			if (pcFriendlyname == NULL)
 			{
-				pcFriendlyname = malloc(strlen(pcCurrent) - 1);
-				for (n = 0; n < strlen(pcCurrent); n++)
+				size_t n, p;
+
+				pcFriendlyname = malloc(strlen(pcCurrent) + 1);
+				for (n = 0, p = 0; n < strlen(pcCurrent); n++)
 				{
 					if (pcCurrent[n] != '"')
 					{	/* Strip off the quotes */
@@ -1907,9 +1931,14 @@ int evaluatetoken(char *pcToken)
 		pcPrevious = NULL;
 	}
 
-	if (pcFriendlyname != NULL &&
-		pcLibpath != NULL && pcChannelid != NULL && badError != 1)
+	/* CHANNELID and DEVICENAME are both optional but not at the same time */
+	if (pcFriendlyname && pcLibpath && badError != 1
+		&& (pcChannelid || pcDevicename))
 	{
+		int channelId;
+		static char* defaultDeviceName = (char *)"";
+
+		Log2(PCSC_LOG_DEBUG, "Add reader: %s", pcFriendlyname);
 		if (0 == reader_list_size)
 		{
 			/* one real reader and one end marker */
@@ -1928,17 +1957,29 @@ int evaluatetoken(char *pcToken)
 
 		/* the DEVICENAME parameter is optional */
 		if (NULL == pcDevicename)
-			pcDevicename = "";
+			pcDevicename = defaultDeviceName;
 
-		channelId = strtoul(pcChannelid, NULL, 0);
+		if (pcChannelid)
+			channelId = strtoul(pcChannelid, NULL, 0);
+		else
+			channelId = 0;
 		reader_list[reader_list_size-2].pcFriendlyname = strdup(pcFriendlyname);
 		reader_list[reader_list_size-2].pcDevicename = strdup(pcDevicename);
 		reader_list[reader_list_size-2].pcLibpath = strdup(pcLibpath),
 		reader_list[reader_list_size-2].channelId = channelId;
 
+		free(pcFriendlyname);
 		pcFriendlyname = NULL;
+
+		if (pcDevicename != defaultDeviceName)
+			free(pcDevicename);
 		pcDevicename = NULL;
+
+		free(pcLibpath);
 		pcLibpath = NULL;
+
+		if (pcChannelid)
+			free(pcChannelid);
 		pcChannelid = NULL;
 	}
 
@@ -2046,6 +2087,7 @@ int DBGetReaderList(const char *readerconf, SerialReader **caller_reader_list)
 		(void)yylex();
 	}
 	while (!feof(configFile));
+	yylex_destroy();
 
 	(void)fclose(configFile);
 
