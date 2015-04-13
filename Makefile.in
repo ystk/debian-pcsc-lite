@@ -82,8 +82,8 @@ DIST_COMMON = INSTALL NEWS README AUTHORS ChangeLog \
 	$(srcdir)/Makefile.in $(srcdir)/Makefile.am \
 	$(top_srcdir)/configure $(am__configure_deps) \
 	$(srcdir)/config.h.in $(top_srcdir)/src/PCSC/pcsclite.h.in \
-	COPYING TODO ar-lib compile config.guess config.sub install-sh \
-	missing ylwrap ltmain.sh
+	COPYING TODO ar-lib compile config.guess config.sub depcomp \
+	install-sh missing ylwrap ltmain.sh
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/as-ac-expand.m4 \
 	$(top_srcdir)/m4/ax_pthread.m4 $(top_srcdir)/m4/libtool.m4 \
@@ -350,6 +350,7 @@ DISTCHECK_CONFIGURE_FLAGS = \
 	--with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir)
 
 EXTRA_DIST = \
+	GPL-3.0.txt \
 	bootstrap \
 	ChangeLog.svn \
 	DRIVERS SECURITY \

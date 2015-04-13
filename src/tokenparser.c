@@ -27,7 +27,7 @@
 #define FLEX_SCANNER
 #define YY_FLEX_MAJOR_VERSION 2
 #define YY_FLEX_MINOR_VERSION 5
-#define YY_FLEX_SUBMINOR_VERSION 35
+#define YY_FLEX_SUBMINOR_VERSION 39
 #if YY_FLEX_SUBMINOR_VERSION > 0
 #define FLEX_BETA
 #endif
@@ -180,7 +180,12 @@ typedef unsigned int flex_uint32_t;
 typedef struct yy_buffer_state *YY_BUFFER_STATE;
 #endif
 
-extern int tpleng;
+#ifndef YY_TYPEDEF_YY_SIZE_T
+#define YY_TYPEDEF_YY_SIZE_T
+typedef size_t yy_size_t;
+#endif
+
+extern yy_size_t tpleng;
 
 extern FILE *tpin, *tpout;
 
@@ -189,6 +194,7 @@ extern FILE *tpin, *tpout;
 #define EOB_ACT_LAST_MATCH 2
 
     #define YY_LESS_LINENO(n)
+    #define YY_LINENO_REWIND_TO(ptr)
     
 /* Return all but the first "n" matched characters back to the input stream. */
 #define yyless(n) \
@@ -205,11 +211,6 @@ extern FILE *tpin, *tpout;
 	while ( 0 )
 
 #define unput(c) yyunput( c, (yytext_ptr)  )
-
-#ifndef YY_TYPEDEF_YY_SIZE_T
-#define YY_TYPEDEF_YY_SIZE_T
-typedef size_t yy_size_t;
-#endif
 
 #ifndef YY_STRUCT_YY_BUFFER_STATE
 #define YY_STRUCT_YY_BUFFER_STATE
@@ -228,7 +229,7 @@ struct yy_buffer_state
 	/* Number of characters read into yy_ch_buf, not including EOB
 	 * characters.
 	 */
-	int yy_n_chars;
+	yy_size_t yy_n_chars;
 
 	/* Whether we "own" the buffer - i.e., we know we created it,
 	 * and can realloc() it to grow it, and should free() it to
@@ -298,8 +299,8 @@ static YY_BUFFER_STATE * yy_buffer_stack = 0; /**< Stack as an array. */
 
 /* yy_hold_char holds the character lost when tptext is formed. */
 static char yy_hold_char;
-static int yy_n_chars;		/* number of characters read into yy_ch_buf */
-int tpleng;
+static yy_size_t yy_n_chars;		/* number of characters read into yy_ch_buf */
+yy_size_t tpleng;
 
 /* Points to current character in buffer. */
 static char *yy_c_buf_p = (char *) 0;
@@ -327,7 +328,7 @@ static void tp_init_buffer (YY_BUFFER_STATE b,FILE *file  );
 
 YY_BUFFER_STATE tp_scan_buffer (char *base,yy_size_t size  );
 YY_BUFFER_STATE tp_scan_string (yyconst char *yy_str  );
-YY_BUFFER_STATE tp_scan_bytes (yyconst char *bytes,int len  );
+YY_BUFFER_STATE tp_scan_bytes (yyconst char *bytes,yy_size_t len  );
 
 void *tpalloc (yy_size_t  );
 void *tprealloc (void *,yy_size_t  );
@@ -359,7 +360,7 @@ void tpfree (void *  );
 
 /* Begin user sect3 */
 
-#define tpwrap(n) 1
+#define tpwrap() 1
 #define YY_SKIP_YYWRAP
 
 typedef unsigned char YY_CHAR;
@@ -522,9 +523,6 @@ are met:
 3. The name of the author may not be used to endorse or promote products
    derived from this software without specific prior written permission.
 
-Changes to this license can be made only by the copyright author with
-explicit written consent.
-
 THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
 OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -536,16 +534,16 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: tokenparser.l 6851 2014-02-14 15:43:32Z rousseau $
+ * $Id: tokenparser.l 7004 2014-10-02 09:26:36Z rousseau $
  */
 /**
  * @file
  * @brief provides parsing functions for Info.plist files
  * platforms
  */
-#line 47 "tokenparser.l"
+#line 44 "tokenparser.l"
 
-#include "config.h"
+#include <config.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -565,7 +563,7 @@ static list_t *ListKeys;
 static list_t *ListValues;
 
 #define YY_NO_INPUT 1
-#line 569 "tokenparser.c"
+#line 567 "tokenparser.c"
 
 #define INITIAL 0
 
@@ -604,7 +602,7 @@ FILE *tpget_out (void );
 
 void tpset_out  (FILE * out_str  );
 
-int tpget_leng (void );
+yy_size_t tpget_leng (void );
 
 char *tpget_text (void );
 
@@ -750,11 +748,6 @@ YY_DECL
 	register char *yy_cp, *yy_bp;
 	register int yy_act;
     
-#line 73 "tokenparser.l"
-
-
-#line 757 "tokenparser.c"
-
 	if ( !(yy_init) )
 		{
 		(yy_init) = 1;
@@ -781,6 +774,12 @@ YY_DECL
 		tp_load_buffer_state( );
 		}
 
+	{
+#line 70 "tokenparser.l"
+
+
+#line 782 "tokenparser.c"
+
 	while ( 1 )		/* loops until end-of-file is reached */
 		{
 		yy_cp = (yy_c_buf_p);
@@ -797,7 +796,7 @@ YY_DECL
 yy_match:
 		do
 			{
-			register YY_CHAR yy_c = yy_ec[YY_SC_TO_UI(*yy_cp)];
+			register YY_CHAR yy_c = yy_ec[YY_SC_TO_UI(*yy_cp)] ;
 			if ( yy_accept[yy_current_state] )
 				{
 				(yy_last_accepting_state) = yy_current_state;
@@ -838,41 +837,41 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 75 "tokenparser.l"
+#line 72 "tokenparser.l"
 {}
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 76 "tokenparser.l"
+#line 73 "tokenparser.l"
 {}
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 77 "tokenparser.l"
+#line 74 "tokenparser.l"
 { eval_key(tptext, ListKeys); }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 78 "tokenparser.l"
+#line 75 "tokenparser.l"
 {}
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 79 "tokenparser.l"
+#line 76 "tokenparser.l"
 { eval_value(tptext, ListValues); }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 80 "tokenparser.l"
+#line 77 "tokenparser.l"
 { tperrorCheck(tptext); }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 81 "tokenparser.l"
+#line 78 "tokenparser.l"
 ECHO;
 	YY_BREAK
-#line 876 "tokenparser.c"
+#line 875 "tokenparser.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -1003,6 +1002,7 @@ case YY_STATE_EOF(INITIAL):
 			"fatal flex scanner internal error--no action found" );
 	} /* end of action switch */
 		} /* end of scanning one token */
+	} /* end of user's declarations */
 } /* end of tplex */
 
 /* yy_get_next_buffer - try to read in a new buffer
@@ -1058,21 +1058,21 @@ static int yy_get_next_buffer (void)
 
 	else
 		{
-			int num_to_read =
+			yy_size_t num_to_read =
 			YY_CURRENT_BUFFER_LVALUE->yy_buf_size - number_to_move - 1;
 
 		while ( num_to_read <= 0 )
 			{ /* Not enough room in the buffer - grow it. */
 
 			/* just a shorter name for the current buffer */
-			YY_BUFFER_STATE b = YY_CURRENT_BUFFER;
+			YY_BUFFER_STATE b = YY_CURRENT_BUFFER_LVALUE;
 
 			int yy_c_buf_p_offset =
 				(int) ((yy_c_buf_p) - b->yy_ch_buf);
 
 			if ( b->yy_is_our_buffer )
 				{
-				int new_size = b->yy_buf_size * 2;
+				yy_size_t new_size = b->yy_buf_size * 2;
 
 				if ( new_size <= 0 )
 					b->yy_buf_size += b->yy_buf_size / 8;
@@ -1103,7 +1103,7 @@ static int yy_get_next_buffer (void)
 
 		/* Read in more data. */
 		YY_INPUT( (&YY_CURRENT_BUFFER_LVALUE->yy_ch_buf[number_to_move]),
-			(yy_n_chars), (size_t) num_to_read );
+			(yy_n_chars), num_to_read );
 
 		YY_CURRENT_BUFFER_LVALUE->yy_n_chars = (yy_n_chars);
 		}
@@ -1198,7 +1198,7 @@ static int yy_get_next_buffer (void)
 	yy_current_state = yy_nxt[yy_base[yy_current_state] + (unsigned int) yy_c];
 	yy_is_jam = (yy_current_state == 38);
 
-	return yy_is_jam ? 0 : yy_current_state;
+		return yy_is_jam ? 0 : yy_current_state;
 }
 
 #ifndef YY_NO_INPUT
@@ -1225,7 +1225,7 @@ static int yy_get_next_buffer (void)
 
 		else
 			{ /* need more input */
-			int offset = (yy_c_buf_p) - (yytext_ptr);
+			yy_size_t offset = (yy_c_buf_p) - (yytext_ptr);
 			++(yy_c_buf_p);
 
 			switch ( yy_get_next_buffer(  ) )
@@ -1385,10 +1385,6 @@ static void tp_load_buffer_state  (void)
 	tpfree((void *) b  );
 }
 
-#ifndef __cplusplus
-extern int isatty (int );
-#endif /* __cplusplus */
-    
 /* Initializes or reinitializes a buffer.
  * This function is sometimes called more than once on the same buffer,
  * such as during a tprestart() or at EOF.
@@ -1501,7 +1497,7 @@ void tppop_buffer_state (void)
  */
 static void tpensure_buffer_stack (void)
 {
-	int num_to_alloc;
+	yy_size_t num_to_alloc;
     
 	if (!(yy_buffer_stack)) {
 
@@ -1598,12 +1594,12 @@ YY_BUFFER_STATE tp_scan_string (yyconst char * yystr )
  * 
  * @return the newly allocated buffer state object.
  */
-YY_BUFFER_STATE tp_scan_bytes  (yyconst char * yybytes, int  _yybytes_len )
+YY_BUFFER_STATE tp_scan_bytes  (yyconst char * yybytes, yy_size_t  _yybytes_len )
 {
 	YY_BUFFER_STATE b;
 	char *buf;
 	yy_size_t n;
-	int i;
+	yy_size_t i;
     
 	/* Get memory for full buffer, including space for trailing EOB's. */
 	n = _yybytes_len + 2;
@@ -1685,7 +1681,7 @@ FILE *tpget_out  (void)
 /** Get the length of the current token.
  * 
  */
-int tpget_leng  (void)
+yy_size_t tpget_leng  (void)
 {
         return tpleng;
 }
@@ -1833,7 +1829,7 @@ void tpfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 81 "tokenparser.l"
+#line 77 "tokenparser.l"
 
 
 

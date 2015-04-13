@@ -16,9 +16,6 @@ are met:
 3. The name of the author may not be used to endorse or promote products
    derived from this software without specific prior written permission.
 
-Changes to this license can be made only by the copyright author with
-explicit written consent.
-
 THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
 OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -30,7 +27,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: utils.c 6851 2014-02-14 15:43:32Z rousseau $
+ * $Id: utils.c 7004 2014-10-02 09:26:36Z rousseau $
  */
 
 /**
@@ -155,6 +152,7 @@ int ThreadCreate(pthread_t * pthThread, int attributes,
 	PCSCLITE_THREAD_FUNCTION(pvFunction), LPVOID pvArg)
 {
 	pthread_attr_t attr;
+	size_t stack_size;
 	int ret;
 
 	ret = pthread_attr_init(&attr);
@@ -164,15 +162,24 @@ int ThreadCreate(pthread_t * pthThread, int attributes,
 	ret = pthread_attr_setdetachstate(&attr,
 		attributes & THREAD_ATTR_DETACHED ? PTHREAD_CREATE_DETACHED : PTHREAD_CREATE_JOINABLE);
 	if (ret)
+		goto error;
+
+	/* stack size of 0x40000 (256 KB) bytes minimum for musl C lib */
+	ret = pthread_attr_getstacksize(&attr, &stack_size);
+	if (ret)
+		goto error;
+
+	if (stack_size < 0x40000)
 	{
-		(void)pthread_attr_destroy(&attr);
-		return ret;
+		stack_size = 0x40000;
+		ret = pthread_attr_setstacksize(&attr, stack_size);
+		if (ret)
+			goto error;
 	}
 
 	ret = pthread_create(pthThread, &attr, pvFunction, pvArg);
-	if (ret)
-		return ret;
 
-	ret = pthread_attr_destroy(&attr);
+error:
+	pthread_attr_destroy(&attr);
 	return ret;
 }

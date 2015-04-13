@@ -20,9 +20,6 @@ are met:
 3. The name of the author may not be used to endorse or promote products
    derived from this software without specific prior written permission.
 
-Changes to this license can be made only by the copyright author with
-explicit written consent.
-
 THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
 OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -34,7 +31,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: winscard_msg.c 6851 2014-02-14 15:43:32Z rousseau $
+ * $Id: winscard_msg.c 7004 2014-10-02 09:26:36Z rousseau $
  */
 
 /**
@@ -81,6 +78,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /* functions used by libpcsclite only */
 
+#ifndef SOCK_CLOEXEC
+#define SOCK_CLOEXEC 0
+#endif
+
 char *getSocketName(void)
 {
 	static char socketName[sizeof(struct sockaddr_un)];
@@ -119,7 +120,7 @@ INTERNAL int ClientSetupSession(uint32_t *pdwClientID)
 	int ret;
 	char *socketName;
 
-	ret = socket(PF_UNIX, SOCK_STREAM, 0);
+	ret = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (ret < 0)
 	{
 		Log2(PCSC_LOG_CRITICAL, "Error: create on client socket: %s",

@@ -20,9 +20,6 @@ are met:
 3. The name of the author may not be used to endorse or promote products
    derived from this software without specific prior written permission.
 
-Changes to this license can be made only by the copyright author with
-explicit written consent.
-
 THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
 OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -34,7 +31,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: pcsclite.h.in 6851 2014-02-14 15:43:32Z rousseau $
+ * $Id: pcsclite.h.in 7004 2014-10-02 09:26:36Z rousseau $
  */
 
 /**
@@ -140,14 +137,14 @@ extern const SCARD_IO_REQUEST g_rgSCardT0Pci, g_rgSCardT1Pci, g_rgSCardRawPci;
 #define SCARD_E_ICC_CREATEORDER		((LONG)0x80100021) /**< The requested order of object creation is not supported. */
 /* #define SCARD_E_UNSUPPORTED_FEATURE	((LONG)0x80100022) / **< This smart card does not support the requested feature. */
 #define SCARD_E_DIR_NOT_FOUND		((LONG)0x80100023) /**< The identified directory does not exist in the smart card. */
-#define SCARD_E_FILE_NOT_FOUND		((LONG)0x80100024) /**< The identified file does not exist in the smart card. */ 
+#define SCARD_E_FILE_NOT_FOUND		((LONG)0x80100024) /**< The identified file does not exist in the smart card. */
 #define SCARD_E_NO_DIR			((LONG)0x80100025) /**< The supplied path does not represent a smart card directory. */
 #define SCARD_E_NO_FILE			((LONG)0x80100026) /**< The supplied path does not represent a smart card file. */
 #define SCARD_E_NO_ACCESS		((LONG)0x80100027) /**< Access is denied to this file. */
 #define SCARD_E_WRITE_TOO_MANY		((LONG)0x80100028) /**< The smart card does not have enough memory to store the information. */
 #define SCARD_E_BAD_SEEK		((LONG)0x80100029) /**< There was an error trying to set the smart card file object pointer. */
 #define SCARD_E_INVALID_CHV		((LONG)0x8010002A) /**< The supplied PIN is incorrect. */
-#define SCARD_E_UNKNOWN_RES_MNG		((LONG)0x8010002B) /**< An unrecognized error code was returned from a layered component. */ 
+#define SCARD_E_UNKNOWN_RES_MNG		((LONG)0x8010002B) /**< An unrecognized error code was returned from a layered component. */
 #define SCARD_E_NO_SUCH_CERTIFICATE	((LONG)0x8010002C) /**< The requested certificate does not exist. */
 #define SCARD_E_CERTIFICATE_UNAVAILABLE	((LONG)0x8010002D) /**< The requested certificate could not be obtained. */
 #define SCARD_E_NO_READERS_AVAILABLE    ((LONG)0x8010002E) /**< Cannot find a smart card reader. */

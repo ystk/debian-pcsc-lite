@@ -47,6 +47,7 @@
 #include <sys/un.h>
 #include <stdio.h>
 #include "debuglog.h"
+#include "auth.h"
 
 #include <errno.h>
 
@@ -147,8 +148,12 @@ cleanup1:
 
 #else
 
-int IsClientAuthorized(int socket, const char* action, const char* reader)
+unsigned IsClientAuthorized(int socket, const char* action, const char* reader)
 {
+	(void)socket;
+	(void)action;
+	(void)reader;
+
 	return 1;
 }
 

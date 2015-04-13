@@ -18,9 +18,6 @@ are met:
 3. The name of the author may not be used to endorse or promote products
    derived from this software without specific prior written permission.
 
-Changes to this license can be made only by the copyright author with
-explicit written consent.
-
 THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
 OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -32,7 +29,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: pcscdaemon.c 6851 2014-02-14 15:43:32Z rousseau $
+ * $Id: pcscdaemon.c 7026 2014-11-06 09:08:07Z rousseau $
  */
 
 /**
@@ -384,7 +381,8 @@ int main(int argc, char **argv)
 
 	rv = stat(PCSCLITE_CSOCK_NAME, &fStatBuf);
 
-	if (rv == 0)
+	/* if the file exist and pcscd was _not_ started by systemd */
+	if (rv == 0 && !SocketActivated)
 	{
 		pid_t pid;
 

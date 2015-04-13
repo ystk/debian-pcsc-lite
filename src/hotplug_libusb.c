@@ -22,9 +22,6 @@ are met:
 3. The name of the author may not be used to endorse or promote products
    derived from this software without specific prior written permission.
 
-Changes to this license can be made only by the copyright author with
-explicit written consent.
-
 THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
 OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
@@ -36,7 +33,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: hotplug_libusb.c 6851 2014-02-14 15:43:32Z rousseau $
+ * $Id: hotplug_libusb.c 7029 2014-11-06 14:57:11Z rousseau $
  */
 
 /**
@@ -435,7 +432,6 @@ static void HPEstablishUSBNotifications(int pipefd[2])
 
 	/* signal that the initially connected readers are now visible */
 	write(pipefd[1], &c, 1);
-	close(pipefd[1]);
 
 	/* if at least one driver do not have IFD_GENERATE_HOTPLUG */
 	do_polling = FALSE;
@@ -512,7 +508,10 @@ LONG HPSearchHotPluggables(void)
 
 		/* Wait for initial readers to setup */
 		read(pipefd[0], &c, 1);
+
+		/* cleanup pipe fd */
 		close(pipefd[0]);
+		close(pipefd[1]);
 	}
 
 	return 0;

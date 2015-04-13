@@ -1,3 +1,382 @@
+2014-11-07  Ludovic Rousseau
+
+	* [r7036] ChangeLog, configure.ac: Release 1.8.13
+	* [r7035] src/auth.c: Fix compiler warnings
+	  
+	  auth.c: In function ‘IsClientAuthorized’: auth.c:151:33: warning:
+	  unused parameter ‘socket’ [-Wunused-parameter] unsigned
+	  IsClientAuthorized(int socket, const char* action, const char*
+	  reader) ^ auth.c:151:53: warning: unused parameter ‘action’
+	  [-Wunused-parameter] unsigned IsClientAuthorized(int socket,
+	  const char* action, const char* reader) ^ auth.c:151:73: warning:
+	  unused parameter ‘reader’ [-Wunused-parameter] unsigned
+	  IsClientAuthorized(int socket, const char* action, const char*
+	  reader)
+	* [r7034] src/Makefile.am, src/auth.c: Fix compiler warning
+	  
+	  auth.c:150:10: warning: no previous prototype for
+	  ‘IsClientAuthorized’ [-Wmissing-prototypes] unsigned
+	  IsClientAuthorized(int socket, const char* action, const char*
+	  reader) ^
+	* [r7033] src/hotplug_libudev.c: Fix again libudev hotplug
+	  
+	  The change in revision 7028 broke the fix introduced in revision
+	  6951.
+	  
+	  Thanks again to Stefani Seibold for the new fix
+	  http://lists.alioth.debian.org/pipermail/pcsclite-muscle/Week-of-Mon-20141103/000226.html
+
+2014-11-06  Ludovic Rousseau
+
+	* [r7029] src/hotplug_libusb.c: Do not access pipefd[] after use
+	  
+	  It is NOT safe to pass to a thread a pointer to a locally
+	  allocated array. When the caller exits the scope of the array
+	  then the memory is reused. So any reference to the array becomes
+	  illegal memory access.
+	  
+	  Thanks to Maximilian Stein for the patch
+	  http://lists.alioth.debian.org/pipermail/pcsclite-muscle/Week-of-Mon-20141103/000218.html
+	* [r7028] src/hotplug_libudev.c: Scan the USB bus at least once
+	  before accepting client connections
+	  
+	  The bug was introduced in pcsc-lite version 1.8.12 with revision
+	  6951.
+	  
+	  Closes Alioth bug [#314869] pcscd: Socket activation not working
+	  on first try
+	  https://alioth.debian.org/tracker/index.php?func=detail&aid=314869&group_id=30105&atid=410085
+	* [r7027] src/spy/install_spy.sh, src/spy/uninstall_spy.sh: Use
+	  ldconfig(8) to find the directory containing libpcsclite.so.1
+	  
+	  On a Debian system (using multiarch) the directory is no more
+	  /usr/lib but /usr/lib/x86_64-linux-gnu on a 64-bits Intel system.
+	* [r7026] src/pcscdaemon.c: Do not log an error when pcscd is
+	  started by systemd
+	  
+	  If pcscd is started by systemd then /var/run/pcscd/pcscd.comm
+	  exists but /var/run/pcscd/pcscd.pid do not exists yet. So an
+	  error was logged: pcscd[2536]: 00000000 utils.c:87:GetDaemonPid()
+	  Can't open /var/run/pcscd/pcscd.pid: No such file or directory
+	  
+	  Now /var/run/pcscd/pcscd.pid is used only if pcscd is NOT started
+	  by systemd.
+	  
+	  Close Alioth bug [#314862] Should not log an error Can't open
+	  /var/run/pcscd/pcscd.pid when started by systemd
+	  https://alioth.debian.org/tracker/index.php?func=detail&aid=314862&group_id=30105&atid=410085
+
+2014-10-22  Ludovic Rousseau
+
+	* [r7016] doc/pcscd.8.in: Use \- for -
+	* [r7015] doc/pcscd.8.in: Add documentation for
+	  --reader-name-no-interface
+	* [r7014] doc/pcscd.8.in: dd documentation for
+	  --reader-name-no-serial
+	* [r7013] doc/pcscd.8.in: Add documentation for --auto-exit
+
+2014-10-02  Ludovic Rousseau
+
+	* [r7007] COPYING: Add licenses for files from other projects
+	  
+	  src/auth.c and src/auth.h are from Red Hat src/sd-daemon.c and
+	  src/sd-daemon.h are from systemd src/simclist.c and
+	  src/simclist.h are from SimCList src/strlcpy.3, src/strlcat.c and
+	  src/strlcpy.c are from OpenBSD
+	* [r7006] src/pcscd.h.in: Add missing 3-clause BSD license
+	* [r7005] COPYING: Add GNU GPL v3 license header
+	* [r7004] COPYING, UnitaryTests/SCardBlockingBehaviourTest.py,
+	  UnitaryTests/SCardExclusiveBehaviour.py, src/PCSC/debuglog.h,
+	  src/PCSC/ifdhandler.h, src/PCSC/pcsclite.h.in, src/PCSC/reader.h,
+	  src/PCSC/winscard.h, src/PCSC/wintypes.h, src/atrhandler.c,
+	  src/atrhandler.h, src/configfile.h, src/configfile.l,
+	  src/debug.c, src/debuglog.c, src/dyn_generic.h, src/dyn_hpux.c,
+	  src/dyn_macosx.c, src/dyn_unix.c, src/error.c,
+	  src/eventhandler.c, src/eventhandler.h, src/hotplug.h,
+	  src/hotplug_generic.c, src/hotplug_libudev.c,
+	  src/hotplug_libusb.c, src/hotplug_linux.c, src/hotplug_macosx.c,
+	  src/ifdwrapper.c, src/ifdwrapper.h, src/lassert.h, src/misc.h,
+	  src/parser.h, src/pcsc-wirecheck-gen.c, src/pcscdaemon.c,
+	  src/powermgt_generic.c, src/powermgt_generic.h,
+	  src/prothandler.c, src/prothandler.h, src/readerfactory.c,
+	  src/readerfactory.h, src/strlcpycat.h, src/sys_generic.h,
+	  src/sys_unix.c, src/testpcsc.c, src/tokenparser.l, src/utils.c,
+	  src/utils.h, src/utils/formaticc.c, src/utils/installifd.c,
+	  src/winscard.c, src/winscard_clnt.c, src/winscard_msg.c,
+	  src/winscard_msg.h, src/winscard_msg_srv.c, src/winscard_svc.c,
+	  src/winscard_svc.h: Make the license more 3-clause BSD like
+	  
+	  The line "Changes to this license can be made only by the
+	  copyright author with explicit written consent." was present in
+	  the pcsc-lite license from the origin of the project (at least
+	  since the initial version of COPYING in the VCS in March 2002).
+	  
+	  This line is not present in the 3-clause BSD license
+	  http://en.wikipedia.org/wiki/BSD_licenses
+	  
+	  The change has been approved by David Corcoran, initial author of
+	  pcsc-lite.
+	  
+	  The change was requested by Oracle about the headers files
+	  winscard.h and pcsclite.h " To include in OpenJDK, Oracle needs
+	  the right to relicense under other terms."
+
+2014-09-24  Ludovic Rousseau
+
+	* [r7001] Makefile.am, doc/example/Makefile.am: The GPL license has
+	  been moved to the root directory
+	  
+	  And version is now 3.0 instead of 2.
+	* [r6999] ChangeLog, configure.ac: Release 1.8.12
+
+2014-09-19  Ludovic Rousseau
+
+	* [r6997] UnitaryTests/SCardConnect_DIRECT2.py: Fix pyflakes
+	  warning
+	  
+	  SCardConnect_DIRECT2.py:36: 'sys' imported but unused
+	* [r6996] UnitaryTests/SCardGetAttrib.py: Fix pyflakes warning
+	  
+	  SCardGetAttrib.py:25: 'sys' imported but unused
+	* [r6995] UnitaryTests/SCardBlockingBehaviourTest.py: Fix pyflakes
+	  warning
+	  
+	  SCardBlockingBehaviourTest.py:234: local variable 'hresult' is
+	  assigned to but never used
+	* [r6994] UnitaryTests/SCardBlockingBehaviourTest.py: Fix pyflakes
+	  warning
+	  
+	  SCardBlockingBehaviourTest.py:249: local variable 'hresult' is
+	  assigned to but never useX
+	* [r6993] UnitaryTests/control_get_firmware.py: Fix stupid bug
+
+2014-09-17  Ludovic Rousseau
+
+	* [r6991] doc/doxygen.conf.in: Do not use FreeSans.ttf anymore
+	  
+	  Warning: doxygen no longer ships with the FreeSans font. You may
+	  want to clear or change DOT_FONTNAME.
+	* [r6990] doc/doxygen.conf.in: Update from Doxygen 1.8.1.1 to 1.8.7
+	  
+	  Used "doxygen -u"
+	* [r6989] src/winscard_clnt.c: Fix Doxygen for
+	  SCardGetStatusChange()
+	  
+	  A value of 0 for dwTimeout is not equivalent of INFINITE but of 0
+	  ms.
+	  
+	  Thanks to helpcrypto for the bug report.
+	  http://lists.alioth.debian.org/pipermail/pcsclite-muscle/Week-of-Mon-20140915/000141.html
+	* [r6987] doc/pcscd.8.in: Update driver web page
+	  
+	  http://www.musclecard.com/drivers.html is no more available. A
+	  copy is available at
+	  http://pcsclite.alioth.debian.org/musclecard.com/drivers.html
+
+2014-09-15  Ludovic Rousseau
+
+	* [r6986] src/strlcpy.c, src/tokenparser.l: Use <config.h> instead
+	  of "config.h"
+	  
+	  https://www.gnu.org/software/autoconf/manual/autoconf-2.65/html_node/Configuration-Headers.html
+	  With the appropriate -I option, you can use #include <config.h>.
+	  Actually, it's a good habit to use it, because in the rare case
+	  when the source directory contains another config.h, the build
+	  directory should be searched first.
+	* [r6985] src/spy/pcsc-spy: Fix error reported by flake8
+	  
+	  pcsc-spy:795:20: E711 comparison to None should be 'if cond is
+	  None:'
+
+2014-09-09  Ludovic Rousseau
+
+	* [r6979] UnitaryTests/Makefile, UnitaryTests/exec.c: Unitary Test
+	  for change in revision 6978
+	* [r6978] src/winscard_msg.c: Create the libpcsclite/pcscd socket
+	  with the SOCK_CLOEXEC flag
+	  
+	  The communication socket between libpcsclite and pcscd is created
+	  with the SOCK_CLOEXEC flag added so the socket is automatically
+	  closed when the process (or its childs) calls exec().
+	  
+	  The problem happens when an application does exec() without
+	  cleaning its use of libpcsclite using SCardReleaseContext(). I
+	  could not reproduce a real problem but it has been reported on
+	  the field with a closed source application.
+	  
+	  Thanks to Stefani Seibold for the bug report and patch.
+
+2014-09-01  Ludovic Rousseau
+
+	* [r6965] src/PCSC/debuglog.h, src/PCSC/ifdhandler.h,
+	  src/PCSC/pcsclite.h.in, src/auth.h: Remove extra spaces at end of
+	  lines
+
+2014-08-07  Ludovic Rousseau
+
+	* [r6953] src/hotplug_libudev.c: Udev is a global variable
+	  
+	  Rename udev as Udev to make it more explicit it is a global
+	  variable.
+	* [r6952] src/hotplug_libudev.c: Add a missing break;
+	  
+	  I removed the line when testing the code. This bug is mine, not
+	  Stefani's
+	* [r6951] src/hotplug_libudev.c: Revamp libudev hotplug
+	  
+	  " Hi,
+	  
+	  this is a complete revamp of src/hotplug_libudev.c hotplug
+	  handling. This patch fix a lot of race conditions and make the
+	  code a bit cleaner.
+	  
+	  The following benefits will be achieved:
+	  
+	  - udev events will be handled seperatly, a "add" event will only
+	  add a device and a "remove" will now only remove the device. So
+	  the whole bookkeeping is now done by the udev daemon, there is no
+	  more need to track the state of the device. Also it fix a race
+	  where udev had yet not finished the plug event and the device is
+	  not full accessible.
+	  
+	  - fix the race gap between the coldplug scan and the activating
+	  of the monitoring hotplug events. Now the monitoring will be
+	  first activated and the the coldplug scan will be done. So there
+	  is a small change that a device will be added during the coldplug
+	  scan. For this the HPAddDevice() function needs to check for
+	  duplicate adds of a device. But that is common design of libudev
+	  usage.
+	  
+	  - No more mutex needed since there is no more concurrency,
+	  because the coldplug scan will be no done inside the thread. - Do
+	  not start the thread detached since there is no way to do a
+	  synchronized stop of the thread. The HPStopHotPluggables() will
+	  now wait until the thread is gone. So it is save to free memory
+	  of structures since no one is access them.
+	  
+	  - Remove the cooperative thread cancellation by AraKiriHotPlug.
+	  Despite the non political correctness it will not work as
+	  expected, because the select() system call will block infinitly.
+	  Using the pthread_cancel() mechanism will do a better and safer
+	  job.
+	  
+	  - Add signal safety to the select() system call. A EINTR should
+	  not lead in a termination of the thread.
+	  
+	  - Fix a typo: pluggble > plugable
+	  
+	  - Make less error prone for unexpected libudev return values.
+	  Check all return values of udev_...() functions against NULL.
+	  
+	  - Fix resource leak in hotplug thread. The udev_device_unref()
+	  was never called on event "remove".
+	  
+	  - Cleanup HPStopHotPluggables() function, which release now all
+	  allocated resources, including udev. It also will not crash when
+	  in HPRegisterForHotplugEvents() was not able to acquire
+	  resources.
+	  
+	  - Replace the prehistoric select() by poll(), which is faster and
+	  consumes less memory.
+	  
+	  Changlog:
+	  
+	  V1 4-Aug-2014 first release V2 5-Aug-2014 Fix coding style.
+	  Optimize HPRemoveDevice() Cleanup HPStopHotPluggables() Fix a
+	  resource leak not calling udev_device_unref() in case of "add" or
+	  "remove" event. V3 5-Aug-2014 Fix resource leak in
+	  HPStopHotPluggables(), release udev Fix error handling in
+	  HPRegisterForHotplugEvents() and HPStopHotPluggables() Revert
+	  unneeded RFRemoveReader() in HPRegisterForHotplugEvents()
+	  
+	  - Stefani
+	  
+	  Signed-off-by: Stefani Seibold <stefani at seibold.net> "
+	  
+	  Thanks to Stefani Seibold for the patch
+	  http://lists.alioth.debian.org/pipermail/pcsclite-muscle/Week-of-Mon-20140804/000093.html
+
+2014-08-06  Ludovic Rousseau
+
+	* [r6950] src/utils.c: Adjust the thread stack size
+	  
+	  The size of 4 MB is not needed and too big (see revision 6948).
+	  By default the thread stack size is: - 8 MB on Debian GNU/Linux -
+	  256 KB on Mac OS X 10.9 - 80 KB on musl, but it is not enough for
+	  pcsc-lite
+	  
+	  256 KB (like on Mac OS X 10.9) is enough for musl.
+	* [r6949] src/utils.c: Factorize error code
+	* [r6948] src/utils.c: Increase the thread stack size to at least 4
+	  MB
+	  
+	  " Recently I tried to run it on a non-glibc system using musl
+	  instead. Turns out musl has a default stacksize of 80KB instead
+	  of the multi-megabyte we are used to in glibc. This leads to
+	  segfaults when pcscd tries to allocate buffers on the stack. To
+	  fix this i applied the following patch:
+	  https://github.com/stef/aports/blob/master/main/pcsc-lite/musl-stacksize.patch
+	  
+	  I would be very thankful if you would incorporate this "upstream"
+	  so that other musl users can happily enjoy pcsc and friends. "
+	  
+	  Thanks to Stefan Marsiske for the patch
+
+2014-07-29  Ludovic Rousseau
+
+	* [r6944] src/configfile.l: Add ReiserFS support (and maybe some
+	  other strange file systems)
+	  
+	  "the attached patch fixes incorrect use of the dirent::d_type
+	  field. As documented in readdir(3) d_type may be set to
+	  DT_UNKNOWN, which applications must handle properly.
+	  
+	  The effect of the bug is that config files are skipped in case
+	  the config directory is located on a file system that doesn't
+	  support d_type (e.g. ReiserFS)."
+	  
+	  Thanks to Ingo Weinhold for the patch
+
+2014-06-13  Ludovic Rousseau
+
+	* [r6918] src/auth.c: Change return value of IsClientAuthorized()
+	  
+	  The version of IsClientAuthorized() when PolicyKit is not used
+	  was not similar to the other version.
+	  
+	  Fixes Debian bug #751517
+
+2014-06-05  Ludovic Rousseau
+
+	* [r6911] src/hotplug_libudev.c: Check udev functions for errors
+	  
+	  Prevent the crash reported at:
+	  https://bugzilla.redhat.com/show_bug.cgi?id=1071243
+	  
+	  Thanks to Nikos Mavrogiannopoulos for the patch
+	  http://lists.alioth.debian.org/pipermail/pcsclite-muscle/Week-of-Mon-20140602/000039.html
+
+2014-04-18  Ludovic Rousseau
+
+	* [r6888] GPL-3.0.txt, doc/example/GPL-3.0.txt: Move the GNU GPL v3
+	  license in the project root directory
+	* [r6887] COPYING: Some files are under GNU GPL v3+ license
+	* [r6886] doc/example/GPL-2, doc/example/GPL-3.0.txt: Replase GNU
+	  GPL v2 by GPL v3 license text
+	  
+	  Since revision 6003 (2011-10-05) pcsc_demo.c moved from GNU GPL
+	  v2+ to GNU GPL v3+
+
+2014-02-26  Ludovic Rousseau
+
+	* [r6861] NEWS: Remove reference about "new MuscleCard" applet
+
+2014-02-20  Ludovic Rousseau
+
+	* [r6859] configure.ac: Make --disable-polkit
+	  
+	  Thanks to Diego Elio Pettenò for the bug report
+
 2014-02-14  Ludovic Rousseau
 
 	* [r6853] ChangeLog, configure.ac: Release 1.8.11

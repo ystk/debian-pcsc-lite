@@ -1,3 +1,20 @@
+pcsc-lite (1.8.13-1) unstable; urgency=medium
+
+  * New upstream release
+  * debian/control: Standards-Version: 3.9.5 -> 3.9.6. No change needed.
+  * Fix "Socket activation not working on first try". Fixed upstream
+    (Closes: #767862)
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Fri, 07 Nov 2014 13:36:56 +0100
+
+pcsc-lite (1.8.12-1) unstable; urgency=medium
+
+  * New upstream release
+  * Fix "Conflicting return types of function IsClientAuthorized"
+    fixed upstream (Closes: #751517)
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Wed, 24 Sep 2014 15:12:59 +0200
+
 pcsc-lite (1.8.11-3) unstable; urgency=medium
 
   * Fix "run dh-autoreconf to update config.{sub, guess} and {libtool,
