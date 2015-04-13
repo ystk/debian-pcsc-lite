@@ -3,7 +3,7 @@
 
 AC_PREREQ([2.69])
 
-AC_INIT([pcsc-lite],[1.8.11])
+AC_INIT([pcsc-lite],[1.8.13])
 AC_CONFIG_SRCDIR(src/pcscdaemon.c)
 AM_INIT_AUTOMAKE(1.8 dist-bzip2 no-dist-gzip)
 AC_CONFIG_HEADERS([config.h])
@@ -285,7 +285,7 @@ POLKIT_MINIMUM=0.111
 AC_ARG_ENABLE(polkit,
 	AS_HELP_STRING([--enable-polkit],
 		[Build with polkit support]),
-		use_polkit=$withval, use_polkit=no)
+		use_polkit=$enableval, use_polkit=no)
 if test "$use_polkit" != "no"; then
 	PKG_CHECK_MODULES(POLKIT, [polkit-gobject-1 >= $POLKIT_MINIMUM], [use_polkit=yes], [use_polkit=no])
 	if test "$use_polkit" != "no";then

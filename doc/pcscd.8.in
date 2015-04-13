@@ -40,22 +40,22 @@ use critical log level.
 The log levels are ordered as: debug < info < error < critical. Use a
 log level l will log this level and all the levels above it.
 .TP
-.B --force-reader-polling
+.B \-\-force\-reader\-polling
 ignore the IFD_GENERATE_HOTPLUG reader capability
 .TP
-.BR \-t ", " \-\-max-thread
+.BR \-t ", " \-\-max\-thread
 maximum number of threads (default 200).
 
 This is the maximum number of clients (SCardEstablishContext) that pcscd
 can handle.
 .TP
-.BR \-s ", " \-\-max-card-handle-per-thread
+.BR \-s ", " \-\-max\-card\-handle\-per\-thread
 maximum number of card handle per thread (default: 200).
 
 This is the maximum number of card handle (SCardConnect) per client
 (SCardEstablishContext).
 .TP
-.BR \-r ", " \-\-max-card-handle-per-reader
+.BR \-r ", " \-\-max\-card\-handle\-per\-reader
 maximum number of card handle per reader (default: 200)
 
 This is the maximum number of card handle (SCardConnect) per reader.
@@ -72,6 +72,16 @@ the
 .I @confdir_exp@/reader.conf
 file to detect added or removed non-USB readers (serial or PCMCIA).
 .
+.TP
+.BR \-x ", " \-\-auto\-exit
+pcscd will quit after 60 seconds of inactivity. This is used when pcscd
+os started on demand by systemd.
+.TP
+.BR \-S ", " \-\-reader\-name\-no\-serial
+Do not include the USB serial number in the reader name.
+.TP
+.BR \-I ", " \-\-reader\-name\-no\-interface
+Do not include the USB interface name in the reader name.
 .SH DESCRIPTION
 pcscd is the daemon program for pcsc-lite. It is a resource manager that
 coordinates communications with smart card readers and smart cards and
@@ -92,7 +102,8 @@ file.  pcscd locates the driver using the
 file.  See the
 .BR reader.conf (5)
 manual page for more information.
-Drivers are available at \fIhttp://www.musclecard.com/drivers.html\fP.
+.PP
+Some drivers are available at \fIhttp://pcsclite.alioth.debian.org/musclecard.com/drivers.html\fP.
 .
 .SH "USB SMART CARD READER DRIVERS"
 USB smart card reader drivers are located in
