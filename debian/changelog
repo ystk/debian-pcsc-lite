@@ -1,3 +1,10 @@
+pcsc-lite (1.8.13-1+deb8u1) jessie-security; urgency=high
+
+  * Fix CVE-2016-10109 "use-after-free and double-free"
+    Apply 2 patches from upstream to fix the issue.
+
+ -- Ludovic Rousseau <rousseau@debian.org>  Wed, 04 Jan 2017 10:01:22 +0100
+
 pcsc-lite (1.8.13-1) unstable; urgency=medium
 
   * New upstream release

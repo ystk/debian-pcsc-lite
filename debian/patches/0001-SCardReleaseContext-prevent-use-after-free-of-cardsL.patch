@@ -1,0 +1,43 @@
+Subject: SCardReleaseContext: prevent use-after-free of cardsList
+Origin: https://alioth.debian.org/plugins/scmgit/cgi-bin/gitweb.cgi?p=pcsclite/PCSC.git;a=commitdiff;h=697fe05967af7ea215bcd5d5774be587780c9e22
+Author: Peter Wu <peter@lekensteyn.nl>
+Date: Sun, 25 Dec 2016 23:31:24 +0100
+
+Once MSGRemoveContext is invoked (via SCARD_RELEASE_CONTEXT),
+cardsList is freed. A repeated invocation of SCARD_RELEASE_CONTEXT (with
+an empty context handle) results in a use-after-free followed by a
+double-free.
+
+After MSGRemoveContext, invocation of SCardEstablishContext enable
+further use-after-free of cardsList in MSGCheckHandleAssociation,
+MSGRemoveContext, MSGAddHandle, MSGRemoveHandle.
+
+To avoid this problem, destroy the list only when the client connection
+is terminated.
+---
+ src/winscard_svc.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+Index: pcsc-lite-1.8.13/src/winscard_svc.c
+===================================================================
+--- pcsc-lite-1.8.13.orig/src/winscard_svc.c
++++ pcsc-lite-1.8.13/src/winscard_svc.c
+@@ -862,7 +862,6 @@ static LONG MSGRemoveContext(SCARDCONTEX
+ 		UNREF_READER(rContext)
+ 	}
+ 	(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
+-	list_destroy(&threadContext->cardsList);
+ 
+ 	/* We only mark the context as no longer in use.
+ 	 * The memory is freed in MSGCleanupCLient() */
+@@ -973,6 +972,10 @@ static LONG MSGCleanupClient(SCONTEXT *
+ 		(void)MSGRemoveContext(threadContext->hContext, threadContext);
+ 	}
+ 
++	(void)pthread_mutex_lock(&threadContext->cardsList_lock);
++	list_destroy(&threadContext->cardsList);
++	(void)pthread_mutex_unlock(&threadContext->cardsList_lock);
++
+ 	Log3(PCSC_LOG_DEBUG,
+ 		"Thread is stopping: dwClientID=%d, threadContext @%p",
+ 		threadContext->dwClientID, threadContext);

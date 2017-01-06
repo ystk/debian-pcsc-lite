@@ -1,0 +1,2 @@
+0001-SCardReleaseContext-prevent-use-after-free-of-cardsL.patch
+0002-SCard-check-for-a-valid-hContext-handles.patch

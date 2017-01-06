@@ -1,0 +1,48 @@
+Subject: SCard: check for a valid hContext handles
+Origin: https://alioth.debian.org/plugins/scmgit/cgi-bin/gitweb.cgi?p=pcsclite/PCSC.git;a=commitdiff;h=3aaab9d998b5deb16a246cc7517e44144d281d3b
+Author: Peter Wu <peter@lekensteyn.nl>
+Date: Sun, 25 Dec 2016 23:37:51 +0100
+
+Reject invalid (zero) hContext handles and log the event.
+---
+ src/winscard_svc.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+Index: pcsc-lite-1.8.13/src/winscard_svc.c
+===================================================================
+--- pcsc-lite-1.8.13.orig/src/winscard_svc.c
++++ pcsc-lite-1.8.13/src/winscard_svc.c
+@@ -796,6 +796,12 @@ static LONG MSGRemoveContext(SCARDCONTEX
+ 	LONG rv;
+ 	int lrv;
+ 
++	if (0 == threadContext->hContext)
++	{
++		Log1(PCSC_LOG_ERROR, "Invalidated handle");
++		return SCARD_E_INVALID_HANDLE;
++	}
++
+ 	if (threadContext->hContext != hContext)
+ 		return SCARD_E_INVALID_VALUE;
+ 
+@@ -875,6 +881,12 @@ static LONG MSGAddHandle(SCARDCONTEXT hC
+ {
+ 	LONG retval = SCARD_E_INVALID_VALUE;
+ 
++	if (0 == threadContext->hContext)
++	{
++		Log1(PCSC_LOG_ERROR, "Invalidated handle");
++		return SCARD_E_INVALID_HANDLE;
++	}
++
+ 	if (threadContext->hContext == hContext)
+ 	{
+ 		/*
+@@ -914,6 +926,7 @@ static LONG MSGAddHandle(SCARDCONTEXT hC
+ 	return retval;
+ }
+ 
++/* Pre-condition: MSGCheckHandleAssociation must succeed. */
+ static LONG MSGRemoveHandle(SCARDHANDLE hCard, SCONTEXT * threadContext)
+ {
+ 	int lrv;
